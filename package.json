@@ -1,0 +1,13 @@
+{
+  "name": "barbu",
+  "private": true,
+  "version": "0.0.0",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "test": "npm run test --workspace=@barbu/engine",
+    "build": "npm run build --workspaces --if-present"
+  }
+}
