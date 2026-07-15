@@ -299,11 +299,41 @@ button.danger { border-color: #e5566a; color: #e5566a; }
 .progress { height: 5px; background: #ffffff18; border-radius: 3px; overflow: hidden; }
 .pfill { height: 100%; background: var(--gold); transition: width .3s; }
 .tracking { display: flex; flex-direction: column; gap: 8px; }
-.trackhead { text-align: left; font-size: .85rem; padding: 6px 10px; }
 .trackbody { background: var(--panel); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 10px; }
 .tabs { display: flex; gap: 6px; }
 .tabs button { padding: 4px 12px; font-size: .78rem; }
 .lastm { text-align: center; margin: 0; }
+
+/* --- Arbitre : pleine largeur, deux colonnes --- */
+.app.arbiter { max-width: min(1500px, 96vw); }
+.arbiter-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 560px); gap: 18px; align-items: start; flex: 1; }
+.arbiter-body main { align-items: flex-start; padding-top: 8px; }
+.arbiter-aside { display: flex; flex-direction: column; gap: 8px; position: sticky; top: 12px; }
+.meta .spacer { flex: 1; }
+.meta button { padding: 4px 10px; font-size: .75rem; }
+
+/* Reprise d'une partie interrompue */
+.resume {
+  display: flex; align-items: center; gap: 12px; background: #e7c66b1a; border: 1px solid var(--gold);
+  border-radius: 12px; padding: 12px 14px;
+}
+.resumeinfo { flex: 1; }
+
+/* Lignes de manche cliquables */
+.stable.editable tbody tr.clickable { cursor: pointer; }
+.stable.editable tbody tr.clickable:hover { background: #ffffff14; }
+.editcell { opacity: 0; transition: opacity .12s; }
+.stable.editable tbody tr:hover .editcell { opacity: .8; }
+
+/* Édition d'une manche */
+.wide-modal { max-width: 620px; }
+.editfield { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid #ffffff18; padding-top: 10px; }
+.editfield > label { font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+.editfield .btnrow { margin: 0; justify-content: flex-start; }
+.editfield .pickfield { margin: 6px 0; }
+.editfield p { margin: 0; }
+.keepresult { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.keepresult p { flex: 1; }
 
 .tablewrap { overflow-x: auto; }
 .stable { width: 100%; border-collapse: collapse; font-size: .78rem; }
@@ -389,6 +419,12 @@ button.danger-solid { background: #e5566a; color: #fff; }
 .hbody .ranking { max-width: none; margin: 0; }
 .hbody .ranking li { background: #ffffff0c; font-size: .85rem; }
 
+/* Sous 1000px : une seule colonne, le suivi passe sous l'étape en cours. */
+@media (max-width: 1000px) {
+  .arbiter-body { grid-template-columns: 1fr; }
+  .arbiter-aside { position: static; }
+}
+
 @media (max-width: 560px) {
   .podium { gap: 4px; }
   .pod { width: 88px; }
@@ -396,4 +432,6 @@ button.danger-solid { background: #e5566a; color: #fff; }
   .datarow { flex-direction: column; align-items: stretch; }
   .hhead { flex-wrap: wrap; gap: 6px; }
   .hdate { width: auto; }
+  .resume { flex-wrap: wrap; }
+  .resumeinfo { flex-basis: 100%; }
 }
