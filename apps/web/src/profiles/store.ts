@@ -14,6 +14,8 @@ export interface MancheRecord {
   dealer: PlayerId;
   contract: ContractId;
   contres: PlayerId[];
+  /** Points avant contres. Absent des parties archivées avant l'édition de manche. */
+  raw?: number[];
   points: number[];
 }
 

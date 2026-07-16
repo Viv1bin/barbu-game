@@ -24,7 +24,8 @@ export function stateFromRecord(store: Store, m: MatchRecord): ArbiterState {
     contres: [],
     contreDecided: [],
     scores: m.scores,
-    history: m.history,
+    // Les parties archivées avant l'ajout de `raw` n'ont que les points finaux.
+    history: m.history.map((x) => ({ ...x, raw: x.raw ?? x.points })),
   };
 }
 

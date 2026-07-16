@@ -15,31 +15,32 @@ function runningTotals(state: ArbiterState): number[][] {
 type Tab = 'table' | 'contracts';
 
 /** Panneau de suivi : tableau détaillé + contrats restants. */
-export function Tracking({ state }: { state: ArbiterState }) {
-  const [open, setOpen] = useState(false);
+export function Tracking({ state, onEdit }: { state: ArbiterState; onEdit?: (index: number) => void }) {
   const [tab, setTab] = useState<Tab>('table');
 
   return (
     <section className="tracking">
-      <button className="ghost trackhead" onClick={() => setOpen((v) => !v)}>
-        {open ? '▾' : '▸'} Suivi de la partie
-        <span className="muted"> — {state.history.length} manche(s) jouée(s)</span>
-      </button>
-
-      {open && (
-        <div className="trackbody">
-          <div className="tabs">
-            <button className={tab === 'table' ? '' : 'ghost'} onClick={() => setTab('table')}>Tableau des scores</button>
-            <button className={tab === 'contracts' ? '' : 'ghost'} onClick={() => setTab('contracts')}>Contrats restants</button>
-          </div>
-          {tab === 'table' ? <ScoreTable state={state} /> : <ContractsGrid state={state} />}
-        </div>
-      )}
+      <div className="tabs">
+        <button className={tab === 'table' ? '' : 'ghost'} onClick={() => setTab('table')}>Tableau des scores</button>
+        <button className={tab === 'contracts' ? '' : 'ghost'} onClick={() => setTab('contracts')}>Contrats restants</button>
+      </div>
+      <div className="trackbody">
+        {tab === 'table' ? (
+          <>
+            <ScoreTable state={state} onEdit={onEdit} />
+            {onEdit && state.history.length > 0 && (
+              <p className="muted">Clique sur une manche pour corriger son contrat, ses contres ou son comptage.</p>
+            )}
+          </>
+        ) : (
+          <ContractsGrid state={state} />
+        )}
+      </div>
     </section>
   );
 }
 
-export function ScoreTable({ state }: { state: ArbiterState }) {
+export function ScoreTable({ state, onEdit }: { state: ArbiterState; onEdit?: (index: number) => void }) {
   const totals = useMemo(() => runningTotals(state), [state]);
 
   if (state.history.length === 0) {
@@ -48,7 +49,7 @@ export function ScoreTable({ state }: { state: ArbiterState }) {
 
   return (
     <div className="tablewrap">
-      <table className="stable">
+      <table className={`stable ${onEdit ? 'editable' : ''}`}>
         <thead>
           <tr>
             <th>#</th>
@@ -57,11 +58,17 @@ export function ScoreTable({ state }: { state: ArbiterState }) {
             {state.names.map((n, p) => (
               <th key={p} className="pcol">{state.avatars[p]} {n}</th>
             ))}
+            {onEdit && <th />}
           </tr>
         </thead>
         <tbody>
           {state.history.map((m, i) => (
-            <tr key={i}>
+            <tr
+              key={i}
+              className={onEdit ? 'clickable' : ''}
+              onClick={onEdit ? () => onEdit(i) : undefined}
+              title={onEdit ? 'Corriger cette manche' : undefined}
+            >
               <td className="dim">{i + 1}</td>
               <td>{state.avatars[m.dealer]}</td>
               <td>
@@ -80,6 +87,7 @@ export function ScoreTable({ state }: { state: ArbiterState }) {
                   <span className="cum">{totals[i]![p]}</span>
                 </td>
               ))}
+              {onEdit && <td className="editcell">✏️</td>}
             </tr>
           ))}
         </tbody>
@@ -89,6 +97,7 @@ export function ScoreTable({ state }: { state: ArbiterState }) {
             {state.scores.map((s, p) => (
               <td key={p} className="pcol total">{s}</td>
             ))}
+            {onEdit && <td />}
           </tr>
         </tfoot>
       </table>
