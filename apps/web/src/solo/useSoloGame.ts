@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   applyMatchAction,
   autoAction,
   createMatch,
   currentActor,
   trickWinner,
+  type Action,
   type Card,
   type ContractId,
   type Difficulty,
@@ -39,9 +40,25 @@ export interface TrickPause {
   collecting: boolean;
 }
 
+/** Une manche terminée, pour le tableau des scores. */
+export interface SoloManche {
+  dealer: PlayerId;
+  contract: ContractId;
+  contres: PlayerId[];
+  /** Points marqués par chaque joueur sur cette manche (contres appliqués). */
+  points: number[];
+}
+
 export interface SoloGame {
   state: MatchState;
   level: Difficulty;
+  /**
+   * Coup conseillé à l'humain (mode aide), calculé par l'IA « impossible » sur
+   * la situation courante — ou null si l'aide est coupée / ce n'est pas à lui.
+   */
+  hint: Action | null;
+  /** Manches terminées (pour le tableau des scores), dans l'ordre. */
+  history: SoloManche[];
   /** Pli complet figé en cours d'affichage (pause), ou null. */
   pause: TrickPause | null;
   /** Dernière donne complète (4 mains), pour le reveal de fin de partie. */
@@ -56,16 +73,30 @@ export interface SoloGame {
   newGame: () => void;
 }
 
-export function useSoloGame(level: Difficulty): SoloGame {
+export function useSoloGame(level: Difficulty, aid = false): SoloGame {
   const rngRef = useRef<() => number>(mulberry((Math.random() * 2 ** 32) >>> 0));
   const [state, setState] = useState<MatchState>(() => createMatch(rngRef.current));
   const [pause, setPause] = useState<TrickPause | null>(null);
+  const [history, setHistory] = useState<SoloManche[]>([]);
   const dealRef = useRef<Card[][] | null>(null);
 
   // Mémorise la donne complète tant qu'elle est disponible (avant le jeu).
   if (state.pendingHands) dealRef.current = state.pendingHands.map((h) => h.slice());
 
   const busy = pause !== null;
+
+  // Coup conseillé : l'IA « impossible » joue à la place de l'humain sur l'état
+  // courant. RNG dédié (ne consomme pas celui de la partie) ; recalculé une fois
+  // par état grâce à useMemo. Coûteux (Monte-Carlo) → seulement quand utile.
+  const hint = useMemo<Action | null>(() => {
+    if (!aid || busy || state.phase === 'DONE' || currentActor(state) !== HUMAN) return null;
+    try {
+      return autoAction(state, mulberry((Math.random() * 2 ** 32) >>> 0), 'impossible');
+    } catch {
+      return null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aid, state, busy]);
 
   // Applique une action ; si elle complète un pli, fige-le pour la pause.
   const step = (action: Parameters<typeof applyMatchAction>[1]) => {
@@ -82,6 +113,16 @@ export function useSoloGame(level: Difficulty): SoloGame {
       nextPause = { trick, winner: trickWinner(trick).player, collecting: false };
     }
     const next = applyMatchAction(state, action, rngRef.current);
+    // Manche bouclée : journaliser le contrat, les contres et le delta de score.
+    if (next.mancheCount > state.mancheCount && state.currentContract) {
+      const entry: SoloManche = {
+        dealer: state.dealer,
+        contract: state.currentContract,
+        contres: state.contres,
+        points: next.scores.map((sc, p) => sc - state.scores[p]!),
+      };
+      setHistory((h) => [...h, entry]);
+    }
     setState(next);
     if (nextPause) setPause(nextPause);
   };
@@ -108,6 +149,8 @@ export function useSoloGame(level: Difficulty): SoloGame {
   return {
     state,
     level,
+    hint,
+    history,
     pause,
     lastDeal: dealRef.current,
     busy,
@@ -119,6 +162,7 @@ export function useSoloGame(level: Difficulty): SoloGame {
     newGame: () => {
       rngRef.current = mulberry((Math.random() * 2 ** 32) >>> 0);
       setPause(null);
+      setHistory([]);
       setState(createMatch(rngRef.current));
     },
   };
