@@ -40,6 +40,15 @@ export interface TrickPause {
   collecting: boolean;
 }
 
+/** Une manche terminée, pour le tableau des scores. */
+export interface SoloManche {
+  dealer: PlayerId;
+  contract: ContractId;
+  contres: PlayerId[];
+  /** Points marqués par chaque joueur sur cette manche (contres appliqués). */
+  points: number[];
+}
+
 export interface SoloGame {
   state: MatchState;
   level: Difficulty;
@@ -48,6 +57,8 @@ export interface SoloGame {
    * la situation courante — ou null si l'aide est coupée / ce n'est pas à lui.
    */
   hint: Action | null;
+  /** Manches terminées (pour le tableau des scores), dans l'ordre. */
+  history: SoloManche[];
   /** Pli complet figé en cours d'affichage (pause), ou null. */
   pause: TrickPause | null;
   /** Dernière donne complète (4 mains), pour le reveal de fin de partie. */
@@ -66,6 +77,7 @@ export function useSoloGame(level: Difficulty, aid = false): SoloGame {
   const rngRef = useRef<() => number>(mulberry((Math.random() * 2 ** 32) >>> 0));
   const [state, setState] = useState<MatchState>(() => createMatch(rngRef.current));
   const [pause, setPause] = useState<TrickPause | null>(null);
+  const [history, setHistory] = useState<SoloManche[]>([]);
   const dealRef = useRef<Card[][] | null>(null);
 
   // Mémorise la donne complète tant qu'elle est disponible (avant le jeu).
@@ -101,6 +113,16 @@ export function useSoloGame(level: Difficulty, aid = false): SoloGame {
       nextPause = { trick, winner: trickWinner(trick).player, collecting: false };
     }
     const next = applyMatchAction(state, action, rngRef.current);
+    // Manche bouclée : journaliser le contrat, les contres et le delta de score.
+    if (next.mancheCount > state.mancheCount && state.currentContract) {
+      const entry: SoloManche = {
+        dealer: state.dealer,
+        contract: state.currentContract,
+        contres: state.contres,
+        points: next.scores.map((sc, p) => sc - state.scores[p]!),
+      };
+      setHistory((h) => [...h, entry]);
+    }
     setState(next);
     if (nextPause) setPause(nextPause);
   };
@@ -128,6 +150,7 @@ export function useSoloGame(level: Difficulty, aid = false): SoloGame {
     state,
     level,
     hint,
+    history,
     pause,
     lastDeal: dealRef.current,
     busy,
@@ -139,6 +162,7 @@ export function useSoloGame(level: Difficulty, aid = false): SoloGame {
     newGame: () => {
       rngRef.current = mulberry((Math.random() * 2 ** 32) >>> 0);
       setPause(null);
+      setHistory([]);
       setState(createMatch(rngRef.current));
     },
   };
