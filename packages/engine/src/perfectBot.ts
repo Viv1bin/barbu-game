@@ -233,17 +233,31 @@ export function mcTrickPlay(s: TrickRoundState, me: PlayerId, rng: () => number)
   return best;
 }
 
-/** Choix du contrat : celui dont les points attendus du donneur sont minimaux (par simulation). */
+/**
+ * Choix du contrat par AVANTAGE RELATIF (et non points absolus).
+ *
+ * Minimiser les points absolus du donneur biaise le choix vers les contrats
+ * intrinsèquement bas (une Réussite fluide, une SALADE où tout le monde marque
+ * peu) : on compare alors des échelles différentes. Or le donneur devra de toute
+ * façon donner ses 7 contrats un jour ; ce qui compte n'est pas « où je marque
+ * peu dans l'absolu » mais « où ma main me place le mieux PAR RAPPORT aux
+ * adversaires ». On mesure donc `points_donneur − moyenne_adversaires` (négatif =
+ * le donneur s'en tire mieux que les autres) et on garde le contrat qui maximise
+ * cet avantage. La main décide, plus l'échelle du contrat.
+ */
 export function mcChooseContract(s: MatchState, rng: () => number): Action {
   const dealer = s.dealer;
   const hand = s.pendingHands![dealer]!;
   const options = legalContracts(s);
+  const opps = ALL_PLAYERS.filter((p) => p !== dealer);
 
   const evalContract = (contract: ContractId, rank: Rank | null): number => {
     let sum = 0;
     for (let i = 0; i < IMPOSSIBLE.contractWorlds; i++) {
       const hands = sampleFreshWorld(hand, dealer, rng);
-      sum += simulateRound(contract, rank, hands, dealer)[dealer]!;
+      const pts = simulateRound(contract, rank, hands, dealer);
+      const oppAvg = opps.reduce<number>((a, o) => a + pts[o]!, 0) / opps.length;
+      sum += pts[dealer]! - oppAvg; // avantage relatif : plus bas = mieux placé que les autres
     }
     return sum / IMPOSSIBLE.contractWorlds;
   };
