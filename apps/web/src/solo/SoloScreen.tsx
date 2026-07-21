@@ -60,6 +60,7 @@ const LEVELS: { id: Difficulty; icon: string; title: string; desc: string }[] = 
   { id: 'facile', icon: '🍀', title: 'Facile', desc: 'Coups au hasard. Pour découvrir le jeu.' },
   { id: 'moyen', icon: '🎯', title: 'Moyen', desc: 'Esquive les pénalités, défausse malin.' },
   { id: 'difficile', icon: '🧠', title: 'Difficile', desc: 'Compte les cartes, encaisse les couleurs mortes, contre finement.' },
+  { id: 'impossible', icon: '💀', title: 'Impossible', desc: "Simule des milliers de coups, joue quasi parfaitement, contre à l'espérance. Ne voit jamais les mains adverses." },
 ];
 
 function SoloSetup({ onBack, onStart }: { onBack: () => void; onStart: (l: Difficulty) => void }) {

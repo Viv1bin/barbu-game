@@ -1,9 +1,12 @@
-// Bots à 3 niveaux. Un moteur pur : les bots ne lisent que l'info publique
+// Bots à 4 niveaux. Un moteur pur : les bots ne lisent que l'info publique
 // (leur main + les plis terminés), jamais les mains adverses.
-//  - facile    : coup légal au hasard.
-//  - moyen     : heuristique gloutonne par contrat, sans mémoire.
-//  - difficile : moyen + comptage de cartes (encaisse les couleurs « mortes »)
-//                + contre/choix de contrat basés sur l'espérance de points.
+//  - facile     : coup légal au hasard.
+//  - moyen      : heuristique gloutonne par contrat, sans mémoire.
+//  - difficile  : moyen + comptage de cartes (encaisse les couleurs « mortes »)
+//                 + contre/choix de contrat basés sur l'espérance de points.
+//  - impossible : Monte-Carlo par déterminisation (voir perfectBot.ts). Simule
+//                 la fin de la manche sur des mains adverses échantillonnées
+//                 depuis la seule info publique, choisit l'espérance minimale.
 import { legalPlays } from './trickRound.js';
 import { canPass, legalReussitePlays } from './reussiteRound.js';
 import { isHeart, isKingOfHearts, isQueen } from './cards.js';
@@ -18,8 +21,9 @@ import type {
   TrickRoundState,
 } from './types.js';
 import { legalContracts } from './match.js';
+import { mcChooseContract, mcContre, mcReussite, mcTrickPlay } from './perfectBot.js';
 
-export type Difficulty = 'facile' | 'moyen' | 'difficile';
+export type Difficulty = 'facile' | 'moyen' | 'difficile' | 'impossible';
 
 function pick<T>(arr: T[], rng: () => number): T {
   return arr[Math.floor(rng() * arr.length)]!;
@@ -56,12 +60,12 @@ export const randomBot: RoundBot = {
 // ---------------------------------------------------------------------------
 // Comptage de cartes (info publique uniquement).
 // ---------------------------------------------------------------------------
-function seenCards(s: TrickRoundState): Card[] {
+export function seenCards(s: TrickRoundState): Card[] {
   return [...s.completedTricks.flat().map((pc) => pc.card), ...s.currentTrick.map((pc) => pc.card)];
 }
 
 /** Reste-t-il des cartes pénalité chez les adversaires (ni vues, ni dans ma main) ? */
-function penaltyLeftOutside(contract: ContractId, seen: Card[], mine: Card[]): boolean {
+export function penaltyLeftOutside(contract: ContractId, seen: Card[], mine: Card[]): boolean {
   const known = (pred: (c: Card) => boolean) =>
     seen.filter(pred).length + mine.filter(pred).length;
   switch (contract) {
@@ -95,7 +99,7 @@ function discardDanger(contract: ContractId, c: Card): number {
   }
 }
 
-function smartTrick(s: TrickRoundState, player: PlayerId, count: boolean): Card {
+export function smartTrick(s: TrickRoundState, player: PlayerId, count: boolean): Card {
   const plays = legalPlays(s, player);
   if (plays.length === 1) return plays[0]!;
   const contract = s.contract;
@@ -128,7 +132,7 @@ function smartTrick(s: TrickRoundState, player: PlayerId, count: boolean): Card 
   return maxBy(plays, (c) => discardDanger(contract, c));
 }
 
-function smartReussite(s: ReussiteState, player: PlayerId): Action {
+export function smartReussite(s: ReussiteState, player: PlayerId): Action {
   const plays = legalReussitePlays(s, player);
   if (plays.length > 0) {
     // Vider vite : jouer depuis la couleur où l'on tient le plus de cartes.
@@ -205,6 +209,7 @@ export function botChooseContract(s: MatchState, level: Difficulty, rng: () => n
     }
     return { t: 'CHOOSE_CONTRACT', contract };
   }
+  if (level === 'impossible') return mcChooseContract(s, rng);
   const rankFor = (c: ContractId) => (c === 'REUSSITE' ? bestReussiteRank(hand) : undefined);
   const contract = minBy(options, (c) => expectedPoints(c, hand, rankFor(c)));
   const rank = rankFor(contract);
@@ -224,6 +229,7 @@ const CONTRE_BASE: Record<ContractId, number> = {
 /** Décision de contre : contrer si notre espérance de points est bien sous la moyenne. */
 export function botContre(s: MatchState, player: PlayerId, level: Difficulty, rng: () => number): Action {
   if (level === 'facile') return { t: 'CONTRE', player, contre: rng() < 0.2 };
+  if (level === 'impossible') return mcContre(s, player, rng);
   const contract = s.currentContract!;
   if (contract === 'REUSSITE') return { t: 'CONTRE', player, contre: false }; // trop incertain
   const hand = s.pendingHands![player]!;
@@ -235,11 +241,13 @@ export function botContre(s: MatchState, player: PlayerId, level: Difficulty, rn
 /** Coup à jouer dans un contrat à plis, selon le niveau. */
 export function botTrickPlay(s: TrickRoundState, player: PlayerId, level: Difficulty, rng: () => number): Card {
   if (level === 'facile') return randomBot.trickPlay(s, player, rng);
+  if (level === 'impossible') return mcTrickPlay(s, player, rng);
   return smartTrick(s, player, level === 'difficile');
 }
 
 /** Action de Réussite selon le niveau. */
 export function botReussite(s: ReussiteState, player: PlayerId, level: Difficulty, rng: () => number): Action {
   if (level === 'facile') return randomBot.reussite(s, player, rng);
+  if (level === 'impossible') return mcReussite(s, player, rng);
   return smartReussite(s, player);
 }
