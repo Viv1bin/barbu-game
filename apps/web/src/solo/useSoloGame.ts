@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   applyMatchAction,
   autoAction,
   createMatch,
   currentActor,
   trickWinner,
+  type Action,
   type Card,
   type ContractId,
   type Difficulty,
@@ -42,6 +43,11 @@ export interface TrickPause {
 export interface SoloGame {
   state: MatchState;
   level: Difficulty;
+  /**
+   * Coup conseillé à l'humain (mode aide), calculé par l'IA « impossible » sur
+   * la situation courante — ou null si l'aide est coupée / ce n'est pas à lui.
+   */
+  hint: Action | null;
   /** Pli complet figé en cours d'affichage (pause), ou null. */
   pause: TrickPause | null;
   /** Dernière donne complète (4 mains), pour le reveal de fin de partie. */
@@ -56,7 +62,7 @@ export interface SoloGame {
   newGame: () => void;
 }
 
-export function useSoloGame(level: Difficulty): SoloGame {
+export function useSoloGame(level: Difficulty, aid = false): SoloGame {
   const rngRef = useRef<() => number>(mulberry((Math.random() * 2 ** 32) >>> 0));
   const [state, setState] = useState<MatchState>(() => createMatch(rngRef.current));
   const [pause, setPause] = useState<TrickPause | null>(null);
@@ -66,6 +72,19 @@ export function useSoloGame(level: Difficulty): SoloGame {
   if (state.pendingHands) dealRef.current = state.pendingHands.map((h) => h.slice());
 
   const busy = pause !== null;
+
+  // Coup conseillé : l'IA « impossible » joue à la place de l'humain sur l'état
+  // courant. RNG dédié (ne consomme pas celui de la partie) ; recalculé une fois
+  // par état grâce à useMemo. Coûteux (Monte-Carlo) → seulement quand utile.
+  const hint = useMemo<Action | null>(() => {
+    if (!aid || busy || state.phase === 'DONE' || currentActor(state) !== HUMAN) return null;
+    try {
+      return autoAction(state, mulberry((Math.random() * 2 ** 32) >>> 0), 'impossible');
+    } catch {
+      return null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aid, state, busy]);
 
   // Applique une action ; si elle complète un pli, fige-le pour la pause.
   const step = (action: Parameters<typeof applyMatchAction>[1]) => {
@@ -108,6 +127,7 @@ export function useSoloGame(level: Difficulty): SoloGame {
   return {
     state,
     level,
+    hint,
     pause,
     lastDeal: dealRef.current,
     busy,

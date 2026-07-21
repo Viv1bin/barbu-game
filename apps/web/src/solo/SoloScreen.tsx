@@ -52,8 +52,9 @@ function sortHand(cards: Card[]): Card[] {
 // ---------------------------------------------------------------------------
 export function SoloScreen({ onBack }: { onBack: () => void }) {
   const [level, setLevel] = useState<Difficulty | null>(null);
-  if (!level) return <SoloSetup onBack={onBack} onStart={setLevel} />;
-  return <SoloGameView level={level} onBack={onBack} />;
+  const [aid, setAid] = useState(false);
+  if (!level) return <SoloSetup aid={aid} onToggleAid={setAid} onBack={onBack} onStart={setLevel} />;
+  return <SoloGameView level={level} aid={aid} onBack={onBack} />;
 }
 
 const LEVELS: { id: Difficulty; icon: string; title: string; desc: string }[] = [
@@ -63,13 +64,30 @@ const LEVELS: { id: Difficulty; icon: string; title: string; desc: string }[] = 
   { id: 'impossible', icon: '💀', title: 'Impossible', desc: "Simule des milliers de coups, joue quasi parfaitement, contre à l'espérance. Ne voit jamais les mains adverses." },
 ];
 
-function SoloSetup({ onBack, onStart }: { onBack: () => void; onStart: (l: Difficulty) => void }) {
+function SoloSetup({
+  aid,
+  onToggleAid,
+  onBack,
+  onStart,
+}: {
+  aid: boolean;
+  onToggleAid: (v: boolean) => void;
+  onBack: () => void;
+  onStart: (l: Difficulty) => void;
+}) {
   return (
     <div className="app">
       <div className="topbar">
         <button className="ghost" onClick={onBack}>← Menu</button>
         <h1>Solo — niveau des bots</h1>
       </div>
+      <label className={`aidtoggle ${aid ? 'on' : ''}`}>
+        <input type="checkbox" checked={aid} onChange={(e) => onToggleAid(e.target.checked)} />
+        <span className="aidmark">💡</span>
+        <span className="aidtext">
+          <b>Mode aide</b> — l'IA « impossible » surligne le meilleur coup à chaque décision.
+        </span>
+      </label>
       <div className="modes levelpick">
         {LEVELS.map((l) => (
           <button key={l.id} className="modecard" onClick={() => onStart(l.id)}>
@@ -83,8 +101,8 @@ function SoloSetup({ onBack, onStart }: { onBack: () => void; onStart: (l: Diffi
   );
 }
 
-function SoloGameView({ level, onBack }: { level: Difficulty; onBack: () => void }) {
-  const game = useSoloGame(level);
+function SoloGameView({ level, aid, onBack }: { level: Difficulty; aid: boolean; onBack: () => void }) {
+  const game = useSoloGame(level, aid);
   const { state } = game;
   const actor = currentActor(state);
 
@@ -242,10 +260,11 @@ function ReussiteView({ round }: { round: ReussiteState }) {
 }
 
 function ContractPicker({ game }: { game: SoloGame }) {
-  const { state } = game;
+  const { state, hint } = game;
   const [reussite, setReussite] = useState(false);
   const options = legalContracts(state);
   const handRanks = [...new Set((state.pendingHands?.[HUMAN] ?? []).map((c) => c.rank))].sort((a, b) => b - a);
+  const tip = hint?.t === 'CHOOSE_CONTRACT' ? hint : null;
 
   if (reussite) {
     return (
@@ -253,7 +272,13 @@ function ContractPicker({ game }: { game: SoloGame }) {
         <p>Réussite — hauteur d'ouverture :</p>
         <div className="btnrow">
           {handRanks.map((r) => (
-            <button key={r} onClick={() => game.chooseContract('REUSSITE', r as Rank)}>{rankLabel(r)}</button>
+            <button
+              key={r}
+              className={tip?.contract === 'REUSSITE' && tip.rank === r ? 'hinted' : ''}
+              onClick={() => game.chooseContract('REUSSITE', r as Rank)}
+            >
+              {rankLabel(r)}
+            </button>
           ))}
         </div>
         <button className="ghost" onClick={() => setReussite(false)}>← retour</button>
@@ -263,9 +288,19 @@ function ContractPicker({ game }: { game: SoloGame }) {
   return (
     <div className="picker">
       <p>À toi de donner. Choisis un contrat :</p>
+      {tip && (
+        <p className="hinttip">
+          💡 Conseil : <b>{CONTRACT_LABEL[tip.contract]}</b>
+          {tip.contract === 'REUSSITE' && tip.rank != null ? ` (hauteur ${rankLabel(tip.rank)})` : ''}
+        </p>
+      )}
       <div className="btnrow">
         {options.map((c: ContractId) => (
-          <button key={c} onClick={() => (c === 'REUSSITE' ? setReussite(true) : game.chooseContract(c))}>
+          <button
+            key={c}
+            className={tip?.contract === c ? 'hinted' : ''}
+            onClick={() => (c === 'REUSSITE' ? setReussite(true) : game.chooseContract(c))}
+          >
             {CONTRACT_LABEL[c]}
           </button>
         ))}
@@ -275,12 +310,15 @@ function ContractPicker({ game }: { game: SoloGame }) {
 }
 
 function ContrePanel({ game }: { game: SoloGame }) {
+  const { hint } = game;
+  const tip = hint?.t === 'CONTRE' ? hint : null;
   return (
     <div className="picker">
       <p>Contrer le donneur ({PLAYER_NAMES[game.state.dealer]}) ?</p>
+      {tip && <p className="hinttip">💡 Conseil : <b>{tip.contre ? 'Contre' : 'Passe'}</b></p>}
       <div className="btnrow">
-        <button onClick={() => game.respondContre(true)}>Contre</button>
-        <button className="ghost" onClick={() => game.respondContre(false)}>Passe</button>
+        <button className={tip?.contre === true ? 'hinted' : ''} onClick={() => game.respondContre(true)}>Contre</button>
+        <button className={`ghost ${tip?.contre === false ? 'hinted' : ''}`} onClick={() => game.respondContre(false)}>Passe</button>
       </div>
     </div>
   );
@@ -290,10 +328,13 @@ function ContrePanel({ game }: { game: SoloGame }) {
 // Main de l'humain.
 // ---------------------------------------------------------------------------
 function HumanDock({ game, actor }: { game: SoloGame; actor: PlayerId | null }) {
-  const { state, busy } = game;
+  const { state, busy, hint } = game;
   const round = state.round;
   const hand = isTrick(round) || isReussite(round) ? round.hands[HUMAN]! : state.pendingHands?.[HUMAN] ?? [];
   const myTurn = !busy && state.phase === 'PLAY' && actor === HUMAN;
+  const hintCardId =
+    hint?.t === 'PLAY_CARD' || hint?.t === 'REUSSITE_PLAY' ? cardId(hint.card) : null;
+  const hintPass = hint?.t === 'REUSSITE_PASS';
 
   const legalIds = useMemo(() => {
     if (!myTurn) return new Set<string>();
@@ -313,15 +354,19 @@ function HumanDock({ game, actor }: { game: SoloGame; actor: PlayerId | null }) 
     <footer className="dock">
       <div className="handbar">
         <span className="handlabel">Votre main{myTurn ? ' · à vous' : ''}</span>
-        {canHumanPass && <button className="pass" onClick={game.reussitePass}>Passer</button>}
+        {myTurn && hintCardId && <span className="handhint">💡 coup conseillé surligné</span>}
+        {canHumanPass && (
+          <button className={`pass ${hintPass ? 'hinted' : ''}`} onClick={game.reussitePass}>Passer</button>
+        )}
       </div>
       <div className="hand">
         {sortHand(hand).map((card) => {
           const legal = legalIds.has(cardId(card));
+          const hinted = myTurn && cardId(card) === hintCardId;
           return (
             <button
               key={cardId(card)}
-              className={`card ${SUIT_RED[card.suit] ? 'red' : 'black'} ${myTurn && !legal ? 'faded' : ''}`}
+              className={`card ${SUIT_RED[card.suit] ? 'red' : 'black'} ${myTurn && !legal ? 'faded' : ''} ${hinted ? 'hinted' : ''}`}
               onClick={() => onCard(card)}
               disabled={!myTurn || !legal}
             >
