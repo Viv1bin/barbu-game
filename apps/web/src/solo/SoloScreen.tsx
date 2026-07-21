@@ -18,7 +18,7 @@ import {
   type Suit,
   type TrickRoundState,
 } from '@barbu/engine';
-import { HUMAN, useSoloGame, type SoloGame } from './useSoloGame.js';
+import { HUMAN, useSoloGame, type SoloGame, type SoloManche } from './useSoloGame.js';
 import {
   CONTRACT_ABBR,
   CONTRACT_LABEL,
@@ -105,6 +105,7 @@ function SoloGameView({ level, aid, onBack }: { level: Difficulty; aid: boolean;
   const game = useSoloGame(level, aid);
   const { state } = game;
   const actor = currentActor(state);
+  const [showScores, setShowScores] = useState(false);
 
   return (
     <div className="app solo">
@@ -116,12 +117,88 @@ function SoloGameView({ level, aid, onBack }: { level: Difficulty; aid: boolean;
         <div className="meta">
           <span>Manche {Math.min(state.mancheCount + 1, 28)}/28</span>
           <span>Contrat : {state.currentContract ? CONTRACT_LABEL[state.currentContract] : '—'}</span>
+          <button className="ghost" onClick={() => setShowScores(true)}>📊 Scores</button>
           <button className="ghost" onClick={game.newGame}>Nouvelle partie</button>
         </div>
       </header>
 
       <PokerTable game={game} actor={actor} />
       <HumanDock game={game} actor={actor} />
+      {showScores && <ScoresModal game={game} onClose={() => setShowScores(false)} />}
+    </div>
+  );
+}
+
+const SEAT_AVATARS = ['🙂', '🤖', '🤖', '🤖'];
+
+/** Tableau des scores du solo : détail manche par manche + cumuls + totaux. */
+function ScoresModal({ game, onClose }: { game: SoloGame; onClose: () => void }) {
+  const { history, state } = game;
+  const totals: number[][] = [];
+  const acc = [0, 0, 0, 0];
+  for (const m of history) {
+    for (let p = 0; p < 4; p++) acc[p]! += m.points[p]!;
+    totals.push(acc.slice());
+  }
+
+  return (
+    <div className="modal-back" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="topbar">
+          <h2>Tableau des scores</h2>
+          <button className="ghost" onClick={onClose}>Fermer</button>
+        </div>
+        {history.length === 0 ? (
+          <p className="muted">Aucune manche terminée pour l'instant.</p>
+        ) : (
+          <div className="tablewrap">
+            <table className="stable">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Donneur</th>
+                  <th>Contrat</th>
+                  {PLAYER_NAMES.map((n, p) => (
+                    <th key={p} className="pcol">{SEAT_AVATARS[p]} {n}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((m: SoloManche, i) => (
+                  <tr key={i}>
+                    <td className="dim">{i + 1}</td>
+                    <td>{SEAT_AVATARS[m.dealer]}</td>
+                    <td>
+                      {CONTRACT_LABEL[m.contract]}
+                      {m.contres.length > 0 && (
+                        <span className="ctrtag" title={`Contré par ${m.contres.map((c) => PLAYER_NAMES[c]).join(', ')}`}>
+                          ×{m.contres.length}
+                        </span>
+                      )}
+                    </td>
+                    {PLAYER_NAMES.map((_, p) => (
+                      <td key={p} className="pcol">
+                        <span className={`pts ${m.points[p]! > 0 ? 'neg' : m.points[p]! < 0 ? 'pos' : 'zero'}`}>
+                          {m.points[p]! > 0 ? '+' : ''}{m.points[p]}
+                        </span>
+                        <span className="cum">{totals[i]![p]}</span>
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={3}>Total</td>
+                  {state.scores.map((s, p) => (
+                    <td key={p} className="pcol total">{s}</td>
+                  ))}
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
