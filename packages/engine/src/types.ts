@@ -88,14 +88,3 @@ export type Action =
   | { t: 'PLAY_CARD'; player: PlayerId; card: Card }
   | { t: 'REUSSITE_PLAY'; player: PlayerId; card: Card }
   | { t: 'REUSSITE_PASS'; player: PlayerId };
-
-/** Vue caviardée envoyée à un joueur (info cachée retirée). */
-export interface PlayerView {
-  you: PlayerId;
-  yourHand: Card[];
-  handSizes: number[]; // nombre de cartes par joueur
-  phase: MatchPhase;
-  contract: ContractId | null;
-  scores: number[];
-  // détails de la manche (plis en cours / files réussite) ajoutés selon le contrat
-}

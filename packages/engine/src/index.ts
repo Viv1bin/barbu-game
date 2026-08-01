@@ -8,3 +8,5 @@ export * from './trickRound.js';
 export * from './reussiteRound.js';
 export * from './bots.js';
 export * from './match.js';
+export * from './online.js';
+export * from './redact.js';

@@ -1,0 +1,6 @@
+{
+  "$schema": "https://www.partykit.io/schema.json",
+  "name": "barbu",
+  "main": "src/server.ts",
+  "compatibilityDate": "2024-11-01"
+}

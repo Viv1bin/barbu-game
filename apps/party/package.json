@@ -1,0 +1,20 @@
+{
+  "name": "@barbu/party",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "partykit dev",
+    "deploy": "partykit deploy",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@barbu/engine": "*"
+  },
+  "devDependencies": {
+    "partykit": "^0.0.111",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

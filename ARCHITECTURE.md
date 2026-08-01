@@ -133,11 +133,21 @@ Puis **`contre.ts`** applique les écarts : pour chaque contreur, `E = points_co
 ### Solo (client-only)
 Store UI détient le `MatchState`. Les 3 bots appellent `bot.chooseAction(view, id)` (info cachée respectée : un bot ne voit que sa main). Boucle : action humaine → réducteur → si prochain joueur = bot, jouer, répéter.
 
-### Online (serveur autoritaire)
-- Salon par **code à 4 lettres** (`rooms.ts`).
-- Le serveur détient l'unique `MatchState`. Client envoie une `Action`, serveur valide via le réducteur, diffuse à chacun une **vue caviardée** (`redact.ts` : main propre complète, mains adverses = nombre de cartes).
-- Transport **WebSocket** (`ws`). Reconnexion : le serveur renvoie la vue courante.
-- Bots optionnels pour compléter une table incomplète (même interface `Bot`).
+### Online (serveur autoritaire) — **PartyKit**
+Implémenté dans le workspace **`apps/party/`** (`src/server.ts`, une salle = une instance
+`Party.Server`). Le client est dans `apps/web/src/online/` (`useOnlineGame` + `partysocket`).
+- Salon par **code à 4 lettres** = l'id de la salle PartyKit.
+- Le serveur détient l'unique `MatchState`. Le client envoie une `Action`, le serveur valide
+  via le réducteur (`applyMatchAction`) et diffuse à chacun une **vue caviardée**
+  (`redactState`, dans le moteur : main propre complète, mains adverses = `handSizes`).
+- Transport **WebSocket** via PartyKit (sur Cloudflare). Reconnexion par `profileId` : le
+  joueur récupère son siège ; en attendant, un bot le remplace pour ne pas bloquer la partie.
+- **Sièges configurés par l'hôte** : chaque place vide est ouverte (pour un ami) ou tenue par
+  un bot (niveau au choix) via `autoAction` — même moteur que le solo.
+- Vues, messages et types partagés : `packages/engine/src/online.ts`
+  (`RedactedMatchState`, `SeatInfo`, `ClientMsg`, `ServerMsg`, `MancheLog`).
+- Rendu : le mode en ligne réutilise le composant de table du solo
+  (`apps/web/src/game/GameTable.tsx`), le siège local étant toujours affiché en bas.
 
 ### Local (arbitre / compte de points)
 Un seul appareil, aucune main gérée. Écrans de saisie par contrat :
@@ -167,7 +177,7 @@ Interface `Bot { chooseAction(view: PlayerView, id: PlayerId): Action }`.
 | Moteur | TS pur, 0 dép. | testable, réutilisable partout |
 | Front | Vite + React | rapide, SPA |
 | État UI | Zustand | léger, simple |
-| Serveur | Node + `ws` | WebSocket minimal, autoritaire |
+| Serveur online | PartyKit (Cloudflare) | salles temps réel clés-en-main, serveur autoritaire, TS |
 | Tests | Vitest | moteur = cœur à tester (scoring, légalité) |
 
 ## Ordre de construction proposé
@@ -176,5 +186,32 @@ Interface `Bot { chooseAction(view: PlayerView, id: PlayerId): Action }`.
 2. **Réducteurs** trickRound + reussiteRound + contre.
 3. **Solo** (web) : valide le moteur en conditions réelles avec bots v1.
 4. **Local (arbitre)** : rapide car réutilise scoring — utilisable en vraie partie tôt.
-5. **Online** : serveur ws + salons + caviardage.
+5. **Online** : serveur PartyKit + salons + caviardage.
 6. **Bots v2** + polish UI.
+
+## Lancer & déployer le mode en ligne (PartyKit)
+
+En développement (deux terminaux) :
+
+```bash
+# 1) le serveur de jeu (salles temps réel), sur 127.0.0.1:1999
+npm run dev --workspace=@barbu/party        # = partykit dev
+
+# 2) le front, qui s'y connecte par défaut en local
+npm run dev --workspace=@barbu/web
+```
+
+Ouvrir deux onglets, « En ligne », créer une partie, partager le code (ou le lien `?room=CODE`).
+
+En production, GitHub Pages est **statique** : le serveur PartyKit se déploie **à part** (compte
+Cloudflare/PartyKit requis, une seule fois) :
+
+```bash
+npx partykit login                          # auth Cloudflare
+npm run deploy --workspace=@barbu/party      # = partykit deploy  → barbu.<user>.partykit.dev
+```
+
+Puis renseigner l'hôte pour le build Pages : dépôt → **Settings → Secrets and variables →
+Actions → Variables** → `PARTYKIT_HOST = barbu.<user>.partykit.dev`. Le workflow
+`deploy.yml` l'injecte dans `VITE_PARTYKIT_HOST`. Sans variable, le mode en ligne pointe sur
+`127.0.0.1:1999` (dev local uniquement).

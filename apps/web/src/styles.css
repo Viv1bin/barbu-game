@@ -456,3 +456,23 @@ button.danger-solid { background: #e5566a; color: #fff; }
   .resume { flex-wrap: wrap; }
   .resumeinfo { flex-basis: 100%; }
 }
+
+/* --- Mode en ligne : landing & salon ---------------------------------- */
+.roomcode {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  background: #ffffff0c; border: 1px solid var(--gold); border-radius: 10px;
+  padding: 10px 14px; margin-bottom: 14px;
+}
+.rclabel { color: var(--muted); font-size: .85rem; }
+.rccode { font-size: 1.6rem; font-weight: 700; letter-spacing: .3em; color: var(--gold); }
+.onlineactions { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
+.joinrow { display: flex; gap: 8px; }
+.joinrow input {
+  flex: 1; text-transform: uppercase; letter-spacing: .3em; text-align: center;
+  font-size: 1.1rem; font-weight: 700;
+}
+.errline { color: #ff9d9d; font-size: .9rem; }
+.plist .pickbtn { border: 2px solid transparent; border-radius: 8px; }
+.pickbtn.on { border-color: var(--gold); background: #ffffff1e; }
+.seatslot.active { border-style: solid; border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold); }
+.seatslot select { margin-top: 4px; width: 100%; }
