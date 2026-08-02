@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Menu, type Screen } from './Menu.js';
 import { SoloScreen } from './solo/SoloScreen.js';
 import { ArbiterScreen } from './arbiter/ArbiterScreen.js';
+import { OnlineScreen } from './online/OnlineScreen.js';
 import { SettingsScreen } from './settings/SettingsScreen.js';
 
 export function App() {
@@ -10,6 +11,7 @@ export function App() {
 
   if (screen === 'solo') return <SoloScreen onBack={back} />;
   if (screen === 'arbiter') return <ArbiterScreen onBack={back} />;
+  if (screen === 'online') return <OnlineScreen onBack={back} />;
   if (screen === 'settings') return <SettingsScreen onBack={back} />;
   return <Menu onPick={setScreen} />;
 }

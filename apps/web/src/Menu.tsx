@@ -3,7 +3,7 @@ export type Screen = 'menu' | 'solo' | 'arbiter' | 'online' | 'settings';
 const MODES: { id: Screen; icon: string; title: string; desc: string; disabled?: boolean }[] = [
   { id: 'solo', icon: '🤖', title: 'Solo', desc: 'Jouer contre 3 bots. Partie complète, 28 manches.' },
   { id: 'arbiter', icon: '📋', title: 'Arbitre', desc: 'Accompagner une vraie partie : contrats, contres, saisie des résultats et compte des points.' },
-  { id: 'online', icon: '🌐', title: 'En ligne', desc: 'Jouer à 4 à distance, temps réel.', disabled: true },
+  { id: 'online', icon: '🌐', title: 'En ligne', desc: 'Jouer à 4 à distance, temps réel. Codes de partie, sièges bots ou amis.' },
 ];
 
 export function Menu({ onPick }: { onPick: (s: Screen) => void }) {

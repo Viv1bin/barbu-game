@@ -5,6 +5,7 @@ dist/
 .DS_Store
 .env
 coverage/
+worker-configuration.d.ts
 .vscode/
 .idea/
 .tmpcheck/

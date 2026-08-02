@@ -28,11 +28,16 @@ jobs:
 
       - run: npm ci
 
-      - name: Tests du moteur
+      - name: Tests (moteur + serveur en ligne)
         run: npm test
 
       - name: Build (typecheck + vite)
         run: npm run build --workspace=@barbu/web
+        env:
+          # Hôte du serveur temps réel Cloudflare Workers (ex. barbu.<sous-domaine>.workers.dev).
+          # Défini dans Settings → Secrets and variables → Actions → Variables.
+          # Absent : le mode en ligne retombe sur 127.0.0.1:8787 (dev local).
+          VITE_PARTYKIT_HOST: ${{ vars.PARTYKIT_HOST }}
 
       - uses: actions/configure-pages@v5
 
