@@ -34,9 +34,9 @@ jobs:
       - name: Build (typecheck + vite)
         run: npm run build --workspace=@barbu/web
         env:
-          # Hôte du serveur PartyKit du mode en ligne (ex. barbu.<user>.partykit.dev).
+          # Hôte du serveur temps réel Cloudflare Workers (ex. barbu.<sous-domaine>.workers.dev).
           # Défini dans Settings → Secrets and variables → Actions → Variables.
-          # Absent : le mode en ligne retombe sur 127.0.0.1:1999 (dev local).
+          # Absent : le mode en ligne retombe sur 127.0.0.1:8787 (dev local).
           VITE_PARTYKIT_HOST: ${{ vars.PARTYKIT_HOST }}
 
       - uses: actions/configure-pages@v5

@@ -3,8 +3,8 @@
   "compilerOptions": {
     "noEmit": true,
     "declaration": false,
-    "lib": ["ES2022", "WebWorker"],
+    "lib": ["ES2022"],
     "types": []
   },
-  "include": ["src"]
+  "include": ["src", "worker-configuration.d.ts"]
 }

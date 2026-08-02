@@ -133,15 +133,20 @@ Puis **`contre.ts`** applique les écarts : pour chaque contreur, `E = points_co
 ### Solo (client-only)
 Store UI détient le `MatchState`. Les 3 bots appellent `bot.chooseAction(view, id)` (info cachée respectée : un bot ne voit que sa main). Boucle : action humaine → réducteur → si prochain joueur = bot, jouer, répéter.
 
-### Online (serveur autoritaire) — **PartyKit**
-Implémenté dans le workspace **`apps/party/`** (`src/server.ts`, une salle = une instance
-`Party.Server`). Le client est dans `apps/web/src/online/` (`useOnlineGame` + `partysocket`).
-- Salon par **code à 4 lettres** = l'id de la salle PartyKit.
+### Online (serveur autoritaire) — **Cloudflare Workers (partyserver)**
+Implémenté dans le workspace **`apps/party/`**. Une salle = une **Durable Object** Cloudflare.
+Toute la logique vit dans `src/core.ts` (`GameRoom`, agnostique du transport) ; `src/server.ts`
+est un mince adaptateur [`partyserver`](https://github.com/cloudflare/partykit) (le successeur
+officiel de PartyKit) qui relie les entrées `onConnect/onMessage/onClose` à `GameRoom` et expose
+le point d'entrée Worker (`routePartykitRequest`). Le client est dans `apps/web/src/online/`
+(`useOnlineGame` + `partysocket`).
+- Salon par **code à 4 lettres** = l'id (`name`) de la Durable Object.
 - Le serveur détient l'unique `MatchState`. Le client envoie une `Action`, le serveur valide
   via le réducteur (`applyMatchAction`) et diffuse à chacun une **vue caviardée**
   (`redactState`, dans le moteur : main propre complète, mains adverses = `handSizes`).
-- Transport **WebSocket** via PartyKit (sur Cloudflare). Reconnexion par `profileId` : le
-  joueur récupère son siège ; en attendant, un bot le remplace pour ne pas bloquer la partie.
+- Transport **WebSocket** via une Durable Object (non-hibernante : l'état vit en mémoire tant
+  qu'il y a des connexions). Reconnexion par `profileId` : le joueur récupère son siège ; en
+  attendant, un bot le remplace pour ne pas bloquer la partie.
 - **Sièges configurés par l'hôte** : chaque place vide est ouverte (pour un ami) ou tenue par
   un bot (niveau au choix) via `autoAction` — même moteur que le solo.
 - Vues, messages et types partagés : `packages/engine/src/online.ts`
@@ -177,7 +182,7 @@ Interface `Bot { chooseAction(view: PlayerView, id: PlayerId): Action }`.
 | Moteur | TS pur, 0 dép. | testable, réutilisable partout |
 | Front | Vite + React | rapide, SPA |
 | État UI | Zustand | léger, simple |
-| Serveur online | PartyKit (Cloudflare) | salles temps réel clés-en-main, serveur autoritaire, TS |
+| Serveur online | Cloudflare Workers + partyserver (Durable Objects) | salles temps réel, serveur autoritaire, TS, déployé sur ton propre compte |
 | Tests | Vitest | moteur = cœur à tester (scoring, légalité) |
 
 ## Ordre de construction proposé
@@ -186,16 +191,16 @@ Interface `Bot { chooseAction(view: PlayerView, id: PlayerId): Action }`.
 2. **Réducteurs** trickRound + reussiteRound + contre.
 3. **Solo** (web) : valide le moteur en conditions réelles avec bots v1.
 4. **Local (arbitre)** : rapide car réutilise scoring — utilisable en vraie partie tôt.
-5. **Online** : serveur PartyKit + salons + caviardage.
+5. **Online** : serveur Cloudflare Workers (partyserver) + salons + caviardage.
 6. **Bots v2** + polish UI.
 
-## Lancer & déployer le mode en ligne (PartyKit)
+## Lancer & déployer le mode en ligne (Cloudflare Workers)
 
 En développement (deux terminaux) :
 
 ```bash
-# 1) le serveur de jeu (salles temps réel), sur 127.0.0.1:1999
-npm run dev --workspace=@barbu/party        # = partykit dev
+# 1) le serveur de jeu (Durable Object), sur 127.0.0.1:8787
+npm run dev --workspace=@barbu/party        # = wrangler dev
 
 # 2) le front, qui s'y connecte par défaut en local
 npm run dev --workspace=@barbu/web
@@ -203,15 +208,18 @@ npm run dev --workspace=@barbu/web
 
 Ouvrir deux onglets, « En ligne », créer une partie, partager le code (ou le lien `?room=CODE`).
 
-En production, GitHub Pages est **statique** : le serveur PartyKit se déploie **à part** (compte
-Cloudflare/PartyKit requis, une seule fois) :
+En production, GitHub Pages est **statique** : le serveur Worker se déploie **à part**, sur ton
+propre compte Cloudflare (gratuit, Durable Objects SQLite inclus ; une seule fois) :
 
 ```bash
-npx partykit login                          # auth Cloudflare
-npm run deploy --workspace=@barbu/party      # = partykit deploy  → barbu.<user>.partykit.dev
+npx wrangler login                                   # auth Cloudflare (navigateur)
+npm run deploy --workspace=@barbu/party              # = wrangler deploy  → barbu.<sous-domaine>.workers.dev
 ```
 
 Puis renseigner l'hôte pour le build Pages : dépôt → **Settings → Secrets and variables →
-Actions → Variables** → `PARTYKIT_HOST = barbu.<user>.partykit.dev`. Le workflow
+Actions → Variables** → `PARTYKIT_HOST = barbu.<sous-domaine>.workers.dev`. Le workflow
 `deploy.yml` l'injecte dans `VITE_PARTYKIT_HOST`. Sans variable, le mode en ligne pointe sur
-`127.0.0.1:1999` (dev local uniquement).
+`127.0.0.1:8787` (dev local uniquement).
+
+> Note : `apps/party/worker-configuration.d.ts` (types runtime générés par `wrangler types`)
+> est régénéré automatiquement au `typecheck` et ignoré par git.

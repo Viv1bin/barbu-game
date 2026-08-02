@@ -14,8 +14,8 @@ import type {
 } from '@barbu/engine';
 import type { UiPause } from '../game/GameTable.js';
 
-/** Hôte PartyKit : env de build en prod, dev-server local par défaut. */
-export const PARTYKIT_HOST = import.meta.env.VITE_PARTYKIT_HOST ?? '127.0.0.1:1999';
+/** Hôte du serveur temps réel (Cloudflare Workers) : env de build en prod, `wrangler dev` local par défaut. */
+export const PARTYKIT_HOST = import.meta.env.VITE_PARTYKIT_HOST ?? '127.0.0.1:8787';
 
 const COLLECT_MS = 900; // ms avant la sous-phase « ramassage » du pli
 
