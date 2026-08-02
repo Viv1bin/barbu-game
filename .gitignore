@@ -6,6 +6,7 @@ dist/
 .env
 coverage/
 worker-configuration.d.ts
+.wrangler/
 .vscode/
 .idea/
 .tmpcheck/

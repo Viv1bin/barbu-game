@@ -4,11 +4,15 @@ Voir les règles dans [`regles.md`](./regles.md).
 
 ## Objectifs produit
 
-Trois modes, un seul moteur de jeu :
+Deux modes de jeu, un seul moteur, derrière un **compte obligatoire** :
 
 1. **Online** — 4 joueurs distants, temps réel, serveur autoritaire.
-2. **Local (arbitre)** — compagnon d'une vraie partie physique : on saisit le résultat des plis, l'app calcule points + contres. But = compte de points fiable.
-3. **Solo** — 1 humain vs 3 bots, 100 % côté client (aucun serveur).
+2. **Solo** — 1 humain vs 3 bots, 100 % côté client (aucun serveur).
+
+**Comptes** : l'app s'ouvre sur connexion/inscription (pseudo + mot de passe). Le compte est
+l'identité unique du joueur (pseudo + avatar), utilisée partout, notamment en ligne. Il n'y a plus
+de profils locaux ni de mode arbitre (suivi d'une partie physique) : voir l'historique Git pour
+l'ancienne implémentation.
 
 ## Principe directeur
 
@@ -154,12 +158,16 @@ le point d'entrée Worker (`routePartykitRequest`). Le client est dans `apps/web
 - Rendu : le mode en ligne réutilise le composant de table du solo
   (`apps/web/src/game/GameTable.tsx`), le siège local étant toujours affiché en bas.
 
-### Local (arbitre / compte de points)
-Un seul appareil, aucune main gérée. Écrans de saisie par contrat :
-- contrats à plis : on désigne le gagnant de chaque pli + cartes pertinentes (cœurs, dames, Roi de cœur) → `scoring.ts`.
-- Réussite : on saisit l'ordre d'arrivée.
-- contres : cases à cocher avant la manche → `contre.ts`.
-Réutilise **uniquement** `scoring.ts` + `contre.ts` (pas les réducteurs de jeu). Tableau des scores cumulés sur les 28 manches.
+### Comptes (auth serveur)
+Même Worker que le jeu en ligne. Une **Durable Object globale** (`AuthServer`, name `global`,
+stockage SQLite : tables `accounts` + `sessions`) tient les comptes. La logique
+(`apps/party/src/auth.ts`, `AuthLogic` sur une abstraction `AuthDB`) est agnostique du runtime →
+testée sans Durable Object (impl `AuthDB` en mémoire). Mots de passe hachés en **PBKDF2-SHA256**
+(WebCrypto). Endpoints JSON (avec CORS) exposés par le `fetch` racine : `POST /auth/register`,
+`/auth/login`, `/auth/logout`, `/auth/profile` (Bearer), `GET /auth/me`. Côté client
+(`apps/web/src/auth/`) : `useAuth` garde le **token** en `localStorage` et le revalide au démarrage
+(`/auth/me`) ; `AuthScreen` gère connexion/inscription ; `SettingsScreen` = « Mon compte » (avatar,
+pseudo, déconnexion).
 
 ## Protocole réseau (online)
 
@@ -183,6 +191,7 @@ Interface `Bot { chooseAction(view: PlayerView, id: PlayerId): Action }`.
 | Front | Vite + React | rapide, SPA |
 | État UI | Zustand | léger, simple |
 | Serveur online | Cloudflare Workers + partyserver (Durable Objects) | salles temps réel, serveur autoritaire, TS, déployé sur ton propre compte |
+| Comptes | Durable Object SQLite + WebCrypto (PBKDF2) | même Worker, aucune base externe, gratuit, mots de passe hachés |
 | Tests | Vitest | moteur = cœur à tester (scoring, légalité) |
 
 ## Ordre de construction proposé
@@ -190,8 +199,8 @@ Interface `Bot { chooseAction(view: PlayerView, id: PlayerId): Action }`.
 1. **Moteur** : types, cards, contracts, scoring (+ tests Vitest) — cœur de valeur.
 2. **Réducteurs** trickRound + reussiteRound + contre.
 3. **Solo** (web) : valide le moteur en conditions réelles avec bots v1.
-4. **Local (arbitre)** : rapide car réutilise scoring — utilisable en vraie partie tôt.
-5. **Online** : serveur Cloudflare Workers (partyserver) + salons + caviardage.
+4. **Online** : serveur Cloudflare Workers (partyserver) + salons + caviardage.
+5. **Comptes** : auth serveur (même Worker) + écran de connexion.
 6. **Bots v2** + polish UI.
 
 ## Lancer & déployer le mode en ligne (Cloudflare Workers)

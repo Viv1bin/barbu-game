@@ -1,18 +1,29 @@
-export type Screen = 'menu' | 'solo' | 'arbiter' | 'online' | 'settings';
+import type { Auth } from './auth/useAuth.js';
+
+export type Screen = 'menu' | 'solo' | 'online' | 'settings';
 
 const MODES: { id: Screen; icon: string; title: string; desc: string; disabled?: boolean }[] = [
   { id: 'solo', icon: '🤖', title: 'Solo', desc: 'Jouer contre 3 bots. Partie complète, 28 manches.' },
-  { id: 'arbiter', icon: '📋', title: 'Arbitre', desc: 'Accompagner une vraie partie : contrats, contres, saisie des résultats et compte des points.' },
   { id: 'online', icon: '🌐', title: 'En ligne', desc: 'Jouer à 4 à distance, temps réel. Codes de partie, sièges bots ou amis.' },
 ];
 
-export function Menu({ onPick }: { onPick: (s: Screen) => void }) {
+export function Menu({ onPick, auth }: { onPick: (s: Screen) => void; auth: Auth }) {
+  const me = auth.account;
   return (
     <div className="menu">
       <div className="hero">
         <h1>Barbu</h1>
-        <p>Le jeu de cartes de la famille — en ligne, en solo, ou en arbitre d'une vraie partie.</p>
+        <p>Le jeu de cartes de la famille — en solo contre des bots ou en ligne entre amis.</p>
       </div>
+
+      {me && (
+        <div className="whoami">
+          <span className="avatar">{me.avatar}</span>
+          <span className="pfname">{me.pseudo}</span>
+          <button className="ghost tiny" onClick={auth.logout}>Se déconnecter</button>
+        </div>
+      )}
+
       <div className="modes">
         {MODES.map((m) => (
           <button
@@ -28,7 +39,7 @@ export function Menu({ onPick }: { onPick: (s: Screen) => void }) {
         ))}
       </div>
       <div className="menuactions">
-        <button className="ghost" onClick={() => onPick('settings')}>⚙️ Réglages — profils, historique, données</button>
+        <button className="ghost" onClick={() => onPick('settings')}>⚙️ Mon compte</button>
       </div>
       <footer className="menufoot">Règles : contrat le plus bas gagne. 7 contrats, 28 manches.</footer>
     </div>
