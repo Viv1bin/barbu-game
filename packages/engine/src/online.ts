@@ -3,6 +3,19 @@
 import type { Action, ContractId, MatchState, PlayedCard, PlayerId } from './types.js';
 import type { Difficulty } from './bots.js';
 
+/** Compte joueur exposé au client (jamais le hash ni le sel du mot de passe). */
+export interface Account {
+  id: string;
+  pseudo: string;
+  avatar: string;
+}
+
+/** Réponse d'inscription / connexion : compte + token de session opaque. */
+export interface AuthResponse {
+  token: string;
+  account: Account;
+}
+
 /**
  * État de partie caviardé envoyé à un joueur : identique à `MatchState`, mais
  * les mains adverses (`pendingHands` / `round.hands`) sont vidées et seule la
