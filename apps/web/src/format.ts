@@ -31,4 +31,26 @@ export const CONTRACT_ABBR: Record<ContractId, string> = {
   REUSSITE: 'Ré',
 };
 
+/** Emoji illustrant chaque contrat (choix des contrats en modale). */
+export const CONTRACT_ICON: Record<ContractId, string> = {
+  BARBU: '🧔',
+  COEUR: '♥️',
+  DEUXDER: '🔚',
+  DAMES: '👸',
+  PLIS: '🃏',
+  SALADE: '🥗',
+  REUSSITE: '🎯',
+};
+
+/** Rappel de règle court, affiché sous le nom du contrat pour rester compréhensible. */
+export const CONTRACT_HINT: Record<ContractId, string> = {
+  BARBU: 'Éviter de prendre le Roi de ♥',
+  COEUR: 'Éviter de ramasser des ♥',
+  DEUXDER: 'Éviter les 2 derniers plis',
+  DAMES: 'Éviter de ramasser les Dames',
+  PLIS: 'Éviter de faire des plis',
+  SALADE: 'Tout à éviter (cumul des contrats)',
+  REUSSITE: 'Se débarrasser de ses cartes en premier',
+};
+
 export const PLAYER_NAMES = ['Vous', 'Bot Ouest', 'Bot Nord', 'Bot Est'];
