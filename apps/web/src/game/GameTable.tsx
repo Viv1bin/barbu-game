@@ -20,12 +20,14 @@ import {
 } from '@barbu/engine';
 import {
   CONTRACT_ABBR,
+  CONTRACT_HINT,
+  CONTRACT_ICON,
   CONTRACT_LABEL,
   SUIT_RED,
   SUIT_SYMBOL,
-  cardLabel,
   rankLabel,
 } from '../format.js';
+import { PlayingCard } from './Card.js';
 
 // ---------------------------------------------------------------------------
 // Vue de table normalisée, partagée par le solo et le mode en ligne. Chaque
@@ -85,8 +87,8 @@ export interface TableView {
 const SUIT_ORDER: Suit[] = ['S', 'H', 'C', 'D'];
 // Positions visuelles : 0 = bas (moi), 1 = gauche, 2 = haut, 3 = droite.
 const SEAT_CLASS = ['seat-bottom', 'seat-left', 'seat-top', 'seat-right'];
-const CARD_TO: Record<number, [string, string]> = { 0: ['0', '38px'], 1: ['-52px', '0'], 2: ['0', '-38px'], 3: ['52px', '0'] };
-const CARD_FROM: Record<number, [string, string]> = { 0: ['0', '240px'], 1: ['-320px', '0'], 2: ['0', '-240px'], 3: ['320px', '0'] };
+const CARD_TO: Record<number, [string, string]> = { 0: ['0', '44px'], 1: ['-60px', '0'], 2: ['0', '-44px'], 3: ['60px', '0'] };
+const CARD_FROM: Record<number, [string, string]> = { 0: ['0', '260px'], 1: ['-340px', '0'], 2: ['0', '-260px'], 3: ['340px', '0'] };
 
 function isTrick(r: MatchState['round']): r is TrickRoundState {
   return !!r && 'currentTrick' in r;
@@ -101,11 +103,12 @@ function sortHand(cards: Card[]): Card[] {
 }
 
 // ---------------------------------------------------------------------------
-// Racine : en-tête + table + dock + tableau des scores.
+// Racine : en-tête + table + dock + tableau des scores + modale de contrat.
 // ---------------------------------------------------------------------------
 export function GameTable({ view, title, onBack }: { view: TableView; title: ReactNode; onBack: () => void }) {
   const { state } = view;
   const [showScores, setShowScores] = useState(false);
+  const choosing = state.phase === 'CHOOSE_CONTRACT' && state.dealer === view.you && !view.pause;
 
   return (
     <div className="app solo">
@@ -124,12 +127,13 @@ export function GameTable({ view, title, onBack }: { view: TableView; title: Rea
 
       <PokerTable view={view} />
       <HumanDock view={view} />
+      {choosing && <ContractModal view={view} />}
       {showScores && <ScoresModal view={view} onClose={() => setShowScores(false)} />}
     </div>
   );
 }
 
-/** Tableau des scores : détail manche par manche + cumuls + totaux. */
+/** Tableau des scores quasi plein écran : manche par manche + cumuls + contrats restants. */
 function ScoresModal({ view, onClose }: { view: TableView; onClose: () => void }) {
   const { history, state, seats } = view;
   const totals: number[][] = [];
@@ -141,16 +145,17 @@ function ScoresModal({ view, onClose }: { view: TableView; onClose: () => void }
 
   return (
     <div className="modal-back" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal scores-modal" onClick={(e) => e.stopPropagation()}>
         <div className="topbar">
-          <h2>Tableau des scores</h2>
+          <h2>📊 Tableau des scores</h2>
           <button className="ghost" onClick={onClose}>Fermer</button>
         </div>
+
         {history.length === 0 ? (
           <p className="muted">Aucune manche terminée pour l'instant.</p>
         ) : (
           <div className="tablewrap">
-            <table className="stable">
+            <table className="stable big">
               <thead>
                 <tr>
                   <th>#</th>
@@ -167,7 +172,7 @@ function ScoresModal({ view, onClose }: { view: TableView; onClose: () => void }
                     <td className="dim">{i + 1}</td>
                     <td>{seats[m.dealer]!.avatar}</td>
                     <td>
-                      {CONTRACT_LABEL[m.contract]}
+                      {CONTRACT_ICON[m.contract]} {CONTRACT_LABEL[m.contract]}
                       {m.contres.length > 0 && (
                         <span className="ctrtag" title={`Contré par ${m.contres.map((c) => seats[c]!.name).join(', ')}`}>
                           ×{m.contres.length}
@@ -196,13 +201,52 @@ function ScoresModal({ view, onClose }: { view: TableView; onClose: () => void }
             </table>
           </div>
         )}
+
+        <ContractsOverview view={view} />
+      </div>
+    </div>
+  );
+}
+
+/** Contrats restant à donner par joueur — déplacé ici depuis les sièges (allégés). */
+function ContractsOverview({ view }: { view: TableView }) {
+  const { state, seats } = view;
+  return (
+    <div className="contracts-overview">
+      <h3>Contrats restant à donner</h3>
+      <div className="cov-grid">
+        {seats.map((s, p) => {
+          const done = state.playedContracts[p] ?? [];
+          const remaining = ALL_CONTRACTS.filter((c) => !done.includes(c));
+          return (
+            <div key={p} className="cov-player">
+              <div className="cov-name">{s.avatar} {s.name}</div>
+              <div className="cov-chips">
+                {remaining.length === 0 ? (
+                  <span className="cabbr done">✓ terminé</span>
+                ) : (
+                  remaining.map((c) => (
+                    <span
+                      key={c}
+                      className={`cabbr ${state.currentContract === c && p === state.dealer ? 'now' : ''}`}
+                      title={CONTRACT_LABEL[c]}
+                    >
+                      {CONTRACT_ICON[c]} {CONTRACT_ABBR[c]}
+                    </span>
+                  ))
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Table de poker : 4 sièges (le local en bas) + centre.
+// Table de poker : 4 sièges (le local en bas) + centre. Sièges allégés :
+// avatar, nom, score, nombre de cartes (les contrats sont dans la modale scores).
 // ---------------------------------------------------------------------------
 function PokerTable({ view }: { view: TableView }) {
   const { state, pause, actor, you, seats, handSizes } = view;
@@ -211,32 +255,20 @@ function PokerTable({ view }: { view: TableView }) {
 
   return (
     <div className="poker-table">
-      {seats.map((seat, p) => {
-        const done = state.playedContracts[p] ?? [];
-        const remaining = ALL_CONTRACTS.filter((c) => !done.includes(c));
-        return (
-          <div
-            key={p}
-            className={`seat ${SEAT_CLASS[pos(p)]} ${activeSeat === p ? 'active' : ''} ${p === state.dealer ? 'dealer' : ''} ${pause?.winner === p ? 'won' : ''}`}
-          >
-            <div className="avatar">{seat.avatar}</div>
-            <div className="sinfo">
-              <div className="sname">{seat.name}{p === state.dealer ? ' 👑' : ''}</div>
-              <div className="sscore">{state.scores[p]} pts</div>
-              <div className="scards">{handSizes[p] ?? 0} 🂠</div>
-              <div className="contracts" title="Contrats restants à donner">
-                {remaining.map((c) => (
-                  <span key={c} className={`cabbr ${state.currentContract === c && p === state.dealer ? 'now' : ''}`}>
-                    {CONTRACT_ABBR[c]}
-                  </span>
-                ))}
-                {remaining.length === 0 && <span className="cabbr done">✓</span>}
-              </div>
-            </div>
-            {state.contres.includes(p as PlayerId) && <div className="ctag">contre</div>}
+      {seats.map((seat, p) => (
+        <div
+          key={p}
+          className={`seat ${SEAT_CLASS[pos(p)]} ${activeSeat === p ? 'active' : ''} ${p === state.dealer ? 'dealer' : ''} ${pause?.winner === p ? 'won' : ''}`}
+        >
+          <div className="avatar">{seat.avatar}</div>
+          <div className="sinfo">
+            <div className="sname">{seat.name}{p === state.dealer ? ' 👑' : ''}</div>
+            <div className="sscore">{state.scores[p]} pts</div>
+            <div className="scards"><b>{handSizes[p] ?? 0}</b> 🂠</div>
           </div>
-        );
-      })}
+          {state.contres.includes(p as PlayerId) && <div className="ctag">contre</div>}
+        </div>
+      ))}
       <div className="table-center">
         <Center view={view} />
       </div>
@@ -249,7 +281,7 @@ function Center({ view }: { view: TableView }) {
   if (pause) return <TrickCards trick={pause.trick} winner={pause.winner} collecting={pause.collecting} you={you} />;
   if (state.phase === 'DONE') return <DoneScreen view={view} />;
   if (state.phase === 'CHOOSE_CONTRACT') {
-    if (state.dealer === you) return <ContractPicker view={view} />;
+    if (state.dealer === you) return <Waiting text="À toi de donner — choisis ton contrat." />;
     return <Waiting text={`${seats[state.dealer]!.name} choisit le contrat…`} />;
   }
   if (state.phase === 'CONTRE') {
@@ -273,7 +305,7 @@ function ContractAnnounce({ state, seats }: { state: MatchState; seats: SeatLabe
   return (
     <div className="announce">
       <div className="alabel">Contrat annoncé par {seats[state.dealer]!.name}</div>
-      <div className="abig">{CONTRACT_LABEL[c]}</div>
+      <div className="abig">{CONTRACT_ICON[c]} {CONTRACT_LABEL[c]}</div>
       {c === 'REUSSITE' && state.reussiteRank != null && (
         <div className="aheight">hauteur {rankLabel(state.reussiteRank)}</div>
       )}
@@ -305,7 +337,7 @@ function TrickCards({ trick, winner, collecting, you }: { trick: PlayedCard[]; w
             className={`thrown ${winner === pc.player ? 'win' : ''} ${collecting ? 'collect' : ''}`}
             style={style}
           >
-            <div className={`card ${SUIT_RED[pc.card.suit] ? 'red' : 'black'}`}>{cardLabel(pc.card)}</div>
+            <PlayingCard card={pc.card} size="lg" />
           </div>
         );
       })}
@@ -313,17 +345,24 @@ function TrickCards({ trick, winner, collecting, you }: { trick: PlayedCard[]; w
   );
 }
 
+/** Réussite : chaque couleur montre ses cartes limites (bas → haut) avec un peu de volume. */
 function ReussiteView({ round, seats }: { round: ReussiteState; seats: SeatLabel[] }) {
   return (
     <div className="reussite">
       <div className="tricklabel">Réussite — hauteur {rankLabel(round.rank)} · tour : {seats[round.turn]!.name}</div>
-      <div className="files">
+      <div className="rfiles">
         {SUIT_ORDER.map((s) => {
           const fan = round.files[s];
           return (
-            <div key={s} className={`file ${SUIT_RED[s] ? 'red' : 'black'}`}>
-              <div className="fsuit">{SUIT_SYMBOL[s]}</div>
-              <div className="frange">{fan ? `${rankLabel(fan.low)} – ${rankLabel(fan.high)}` : '—'}</div>
+            <div key={s} className={`rfile ${SUIT_RED[s] ? 'red' : 'black'}`}>
+              {fan ? (
+                <div className="rfan">
+                  <PlayingCard card={{ suit: s, rank: fan.low }} size="sm" />
+                  {fan.high !== fan.low && <PlayingCard card={{ suit: s, rank: fan.high }} size="sm" className="stacked" />}
+                </div>
+              ) : (
+                <div className="rempty">{SUIT_SYMBOL[s]}</div>
+              )}
             </div>
           );
         })}
@@ -333,51 +372,62 @@ function ReussiteView({ round, seats }: { round: ReussiteState; seats: SeatLabel
   );
 }
 
-function ContractPicker({ view }: { view: TableView }) {
+/** Choix du contrat, dans une vraie interface qui s'ouvre au-dessus de la table. */
+function ContractModal({ view }: { view: TableView }) {
   const { state, hint, you, actions } = view;
   const [reussite, setReussite] = useState(false);
   const options = legalContracts(state);
   const handRanks = [...new Set((state.pendingHands?.[you] ?? []).map((c) => c.rank))].sort((a, b) => b - a);
   const tip = hint?.t === 'CHOOSE_CONTRACT' ? hint : null;
 
-  if (reussite) {
-    return (
-      <div className="picker">
-        <p>Réussite — hauteur d'ouverture :</p>
-        <div className="btnrow">
-          {handRanks.map((r) => (
-            <button
-              key={r}
-              className={tip?.contract === 'REUSSITE' && tip.rank === r ? 'hinted' : ''}
-              onClick={() => actions.chooseContract('REUSSITE', r as Rank)}
-            >
-              {rankLabel(r)}
-            </button>
-          ))}
-        </div>
-        <button className="ghost" onClick={() => setReussite(false)}>← retour</button>
-      </div>
-    );
-  }
   return (
-    <div className="picker">
-      <p>À toi de donner. Choisis un contrat :</p>
-      {tip && (
-        <p className="hinttip">
-          💡 Conseil : <b>{CONTRACT_LABEL[tip.contract]}</b>
-          {tip.contract === 'REUSSITE' && tip.rank != null ? ` (hauteur ${rankLabel(tip.rank)})` : ''}
-        </p>
-      )}
-      <div className="btnrow">
-        {options.map((c: ContractId) => (
-          <button
-            key={c}
-            className={tip?.contract === c ? 'hinted' : ''}
-            onClick={() => (c === 'REUSSITE' ? setReussite(true) : actions.chooseContract(c))}
-          >
-            {CONTRACT_LABEL[c]}
-          </button>
-        ))}
+    <div className="modal-back">
+      <div className="modal contract-modal" onClick={(e) => e.stopPropagation()}>
+        {reussite ? (
+          <>
+            <div className="topbar">
+              <h2>🎯 Réussite</h2>
+              <button className="ghost" onClick={() => setReussite(false)}>← retour</button>
+            </div>
+            <p className="muted">Choisis la hauteur d'ouverture :</p>
+            <div className="heightrow">
+              {handRanks.map((r) => (
+                <button
+                  key={r}
+                  className={`heightbtn ${tip?.contract === 'REUSSITE' && tip.rank === r ? 'hinted' : ''}`}
+                  onClick={() => actions.chooseContract('REUSSITE', r as Rank)}
+                >
+                  {rankLabel(r)}
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="topbar">
+              <h2>À toi de donner</h2>
+            </div>
+            {tip && (
+              <p className="hinttip">
+                💡 Conseil : <b>{CONTRACT_LABEL[tip.contract]}</b>
+                {tip.contract === 'REUSSITE' && tip.rank != null ? ` (hauteur ${rankLabel(tip.rank)})` : ''}
+              </p>
+            )}
+            <div className="contract-grid">
+              {options.map((c: ContractId) => (
+                <button
+                  key={c}
+                  className={`contract-card ${tip?.contract === c ? 'hinted' : ''}`}
+                  onClick={() => (c === 'REUSSITE' ? setReussite(true) : actions.chooseContract(c))}
+                >
+                  <span className="cc-icon">{CONTRACT_ICON[c]}</span>
+                  <span className="cc-name">{CONTRACT_LABEL[c]}</span>
+                  <span className="cc-hint">{CONTRACT_HINT[c]}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -399,7 +449,7 @@ function ContrePanel({ view }: { view: TableView }) {
 }
 
 // ---------------------------------------------------------------------------
-// Main du joueur local.
+// Main du joueur local : grandes cartes en éventail superposé.
 // ---------------------------------------------------------------------------
 function HumanDock({ view }: { view: TableView }) {
   const { state, busy, hint, you, actor, actions } = view;
@@ -424,6 +474,9 @@ function HumanDock({ view }: { view: TableView }) {
     else if (isReussite(round)) actions.reussitePlay(card);
   };
 
+  const cards = sortHand(hand);
+  const n = cards.length;
+
   return (
     <footer className="dock">
       <div className="handbar">
@@ -433,18 +486,25 @@ function HumanDock({ view }: { view: TableView }) {
           <button className={`pass ${hintPass ? 'hinted' : ''}`} onClick={actions.reussitePass}>Passer</button>
         )}
       </div>
-      <div className="hand">
-        {sortHand(hand).map((card) => {
+      <div className="hand fan">
+        {cards.map((card, i) => {
           const legal = legalIds.has(cardId(card));
           const hinted = myTurn && cardId(card) === hintCardId;
+          const off = i - (n - 1) / 2;
+          const style = {
+            '--rot': `${off * 3}deg`,
+            '--lift': `${Math.abs(off) * 5}px`,
+            zIndex: i,
+          } as CSSProperties;
           return (
             <button
               key={cardId(card)}
-              className={`card ${SUIT_RED[card.suit] ? 'red' : 'black'} ${myTurn && !legal ? 'faded' : ''} ${hinted ? 'hinted' : ''}`}
+              className={`handcard ${myTurn && !legal ? 'faded' : ''} ${myTurn && legal ? 'playable' : ''} ${hinted ? 'hinted' : ''}`}
+              style={style}
               onClick={() => onCard(card)}
               disabled={!myTurn || !legal}
             >
-              {cardLabel(card)}
+              <PlayingCard card={card} size="md" />
             </button>
           );
         })}
@@ -481,7 +541,7 @@ function DoneScreen({ view }: { view: TableView }) {
               <span className="rname">{s.name}</span>
               <span className="rhand">
                 {sortHand(lastDeal[p] ?? []).map((c) => (
-                  <span key={cardId(c)} className={`minicard ${SUIT_RED[c.suit] ? 'red' : ''}`}>{cardLabel(c)}</span>
+                  <PlayingCard key={cardId(c)} card={c} size="sm" />
                 ))}
               </span>
             </div>
