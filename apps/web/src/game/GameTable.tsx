@@ -19,7 +19,6 @@ import {
   type TrickRoundState,
 } from '@barbu/engine';
 import {
-  CONTRACT_ABBR,
   CONTRACT_HINT,
   CONTRACT_ICON,
   CONTRACT_LABEL,
@@ -108,7 +107,6 @@ function sortHand(cards: Card[]): Card[] {
 export function GameTable({ view, title, onBack }: { view: TableView; title: ReactNode; onBack: () => void }) {
   const { state } = view;
   const [showScores, setShowScores] = useState(false);
-  const choosing = state.phase === 'CHOOSE_CONTRACT' && state.dealer === view.you && !view.pause;
 
   return (
     <div className="app solo">
@@ -127,118 +125,123 @@ export function GameTable({ view, title, onBack }: { view: TableView; title: Rea
 
       <PokerTable view={view} />
       <HumanDock view={view} />
-      {choosing && <ContractModal view={view} />}
       {showScores && <ScoresModal view={view} onClose={() => setShowScores(false)} />}
     </div>
   );
 }
 
-/** Tableau des scores quasi plein écran : manche par manche + cumuls + contrats restants. */
+/**
+ * Feuille de match Barbu : matrice donneur × contrat (comme la feuille papier).
+ * Colonnes groupées par donneur (4), chaque groupe = les 4 joueurs ; lignes = les
+ * 7 contrats. Chaque case = points du joueur sur la manche donnée par ce donneur.
+ * En tête : le classement. En pied de groupe : sous-total du donneur.
+ */
 function ScoresModal({ view, onClose }: { view: TableView; onClose: () => void }) {
   const { history, state, seats } = view;
-  const totals: number[][] = [];
-  const acc = [0, 0, 0, 0];
-  for (const m of history) {
-    for (let p = 0; p < 4; p++) acc[p]! += m.points[p]!;
-    totals.push(acc.slice());
-  }
+  const you = view.you;
+
+  // Index des manches par (donneur, contrat).
+  const byKey = new Map<string, MancheLog>();
+  for (const m of history) byKey.set(`${m.dealer}:${m.contract}`, m);
+
+  // Sous-total d'un donneur pour un joueur (somme de ses contrats déjà joués).
+  const groupSub = (dealer: number, player: number) => {
+    let s = 0;
+    for (const c of ALL_CONTRACTS) {
+      const m = byKey.get(`${dealer}:${c}`);
+      if (m) s += m.points[player]!;
+    }
+    return s;
+  };
+
+  const ranking = seats
+    .map((s, p) => ({ name: s.name, avatar: s.avatar, p, score: state.scores[p]! }))
+    .sort((a, b) => a.score - b.score);
+  const best = ranking[0]!.score;
 
   return (
     <div className="modal-back" onClick={onClose}>
       <div className="modal scores-modal" onClick={(e) => e.stopPropagation()}>
         <div className="topbar">
-          <h2>📊 Tableau des scores</h2>
+          <h2>📊 Feuille de match</h2>
           <button className="ghost" onClick={onClose}>Fermer</button>
         </div>
 
-        {history.length === 0 ? (
-          <p className="muted">Aucune manche terminée pour l'instant.</p>
-        ) : (
-          <div className="tablewrap">
-            <table className="stable big">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Donneur</th>
-                  <th>Contrat</th>
-                  {seats.map((s, p) => (
-                    <th key={p} className="pcol">{s.avatar} {s.name}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {history.map((m, i) => (
-                  <tr key={i}>
-                    <td className="dim">{i + 1}</td>
-                    <td>{seats[m.dealer]!.avatar}</td>
-                    <td>
-                      {CONTRACT_ICON[m.contract]} {CONTRACT_LABEL[m.contract]}
-                      {m.contres.length > 0 && (
-                        <span className="ctrtag" title={`Contré par ${m.contres.map((c) => seats[c]!.name).join(', ')}`}>
-                          ×{m.contres.length}
-                        </span>
-                      )}
-                    </td>
-                    {seats.map((_, p) => (
-                      <td key={p} className="pcol">
-                        <span className={`pts ${m.points[p]! > 0 ? 'neg' : m.points[p]! < 0 ? 'pos' : 'zero'}`}>
-                          {m.points[p]! > 0 ? '+' : ''}{m.points[p]}
-                        </span>
-                        <span className="cum">{totals[i]![p]}</span>
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td colSpan={3}>Total</td>
-                  {state.scores.map((s, p) => (
-                    <td key={p} className="pcol total">{s}</td>
-                  ))}
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        )}
-
-        <ContractsOverview view={view} />
-      </div>
-    </div>
-  );
-}
-
-/** Contrats restant à donner par joueur — déplacé ici depuis les sièges (allégés). */
-function ContractsOverview({ view }: { view: TableView }) {
-  const { state, seats } = view;
-  return (
-    <div className="contracts-overview">
-      <h3>Contrats restant à donner</h3>
-      <div className="cov-grid">
-        {seats.map((s, p) => {
-          const done = state.playedContracts[p] ?? [];
-          const remaining = ALL_CONTRACTS.filter((c) => !done.includes(c));
-          return (
-            <div key={p} className="cov-player">
-              <div className="cov-name">{s.avatar} {s.name}</div>
-              <div className="cov-chips">
-                {remaining.length === 0 ? (
-                  <span className="cabbr done">✓ terminé</span>
-                ) : (
-                  remaining.map((c) => (
-                    <span
-                      key={c}
-                      className={`cabbr ${state.currentContract === c && p === state.dealer ? 'now' : ''}`}
-                      title={CONTRACT_LABEL[c]}
-                    >
-                      {CONTRACT_ICON[c]} {CONTRACT_ABBR[c]}
-                    </span>
-                  ))
-                )}
-              </div>
+        {/* Classement en un coup d'œil (le moins de points gagne). */}
+        <div className="standings">
+          {ranking.map((r, i) => (
+            <div key={r.p} className={`stand ${r.score === best ? 'lead' : ''} ${r.p === you ? 'me' : ''}`}>
+              <span className="stand-rank">{i + 1}</span>
+              <span className="stand-av">{r.avatar}</span>
+              <span className="stand-name">{r.name}</span>
+              <span className="stand-score">{r.score}</span>
             </div>
-          );
-        })}
+          ))}
+        </div>
+
+        <div className="tablewrap">
+          <table className="smatrix">
+            <thead>
+              <tr>
+                <th className="corner-th" rowSpan={2}>Contrat</th>
+                {seats.map((s, d) => (
+                  <th key={d} className={`grp ${d === state.dealer ? 'now' : ''}`} colSpan={4} title={`Donne de ${s.name}`}>
+                    <span className="grp-av">{s.avatar}</span> donne
+                  </th>
+                ))}
+              </tr>
+              <tr>
+                {seats.map((_, d) =>
+                  seats.map((s, p) => (
+                    <th key={`${d}-${p}`} className={`ph ${p === you ? 'me' : ''}`} title={s.name}>
+                      {s.avatar}
+                    </th>
+                  )),
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {ALL_CONTRACTS.map((c) => (
+                <tr key={c}>
+                  <th className="ctr-th" title={CONTRACT_LABEL[c]}>
+                    <span className="ctr-ic">{CONTRACT_ICON[c]}</span>
+                    <span className="ctr-nm">{CONTRACT_LABEL[c]}</span>
+                  </th>
+                  {seats.map((_, d) => {
+                    const m = byKey.get(`${d}:${c}`);
+                    const isNow = d === state.dealer && state.currentContract === c;
+                    return seats.map((__, p) => {
+                      const v = m?.points[p];
+                      const contred = m?.contres.includes(p as PlayerId);
+                      return (
+                        <td
+                          key={`${d}-${p}`}
+                          className={`cell ${isNow ? 'now' : ''} ${p === you ? 'me' : ''} ${v == null ? 'empty' : v > 0 ? 'neg' : v < 0 ? 'pos' : 'zero'}`}
+                        >
+                          {v == null ? '' : v}
+                          {contred && <sup className="ctr-mark" title="contré">×</sup>}
+                        </td>
+                      );
+                    });
+                  })}
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="subtotal">
+                <th>Sous-total</th>
+                {seats.map((_, d) =>
+                  seats.map((__, p) => (
+                    <td key={`${d}-${p}`} className={`sub ${p === you ? 'me' : ''}`}>
+                      {groupSub(d, p) || ''}
+                    </td>
+                  )),
+                )}
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        <p className="muted matrix-note">Chaque case : points du joueur (colonne) sur la manche donnée par le donneur (groupe). Le moins de points gagne.</p>
       </div>
     </div>
   );
@@ -281,7 +284,7 @@ function Center({ view }: { view: TableView }) {
   if (pause) return <TrickCards trick={pause.trick} winner={pause.winner} collecting={pause.collecting} you={you} />;
   if (state.phase === 'DONE') return <DoneScreen view={view} />;
   if (state.phase === 'CHOOSE_CONTRACT') {
-    if (state.dealer === you) return <Waiting text="À toi de donner — choisis ton contrat." />;
+    if (state.dealer === you) return <ContractPicker view={view} />;
     return <Waiting text={`${seats[state.dealer]!.name} choisit le contrat…`} />;
   }
   if (state.phase === 'CONTRE') {
@@ -372,62 +375,53 @@ function ReussiteView({ round, seats }: { round: ReussiteState; seats: SeatLabel
   );
 }
 
-/** Choix du contrat, dans une vraie interface qui s'ouvre au-dessus de la table. */
-function ContractModal({ view }: { view: TableView }) {
+/** Choix du contrat, inline au centre de la table (la table reste visible). */
+function ContractPicker({ view }: { view: TableView }) {
   const { state, hint, you, actions } = view;
   const [reussite, setReussite] = useState(false);
   const options = legalContracts(state);
   const handRanks = [...new Set((state.pendingHands?.[you] ?? []).map((c) => c.rank))].sort((a, b) => b - a);
   const tip = hint?.t === 'CHOOSE_CONTRACT' ? hint : null;
 
+  if (reussite) {
+    return (
+      <div className="picker">
+        <p>🎯 Réussite — hauteur d'ouverture :</p>
+        <div className="btnrow">
+          {handRanks.map((r) => (
+            <button
+              key={r}
+              className={tip?.contract === 'REUSSITE' && tip.rank === r ? 'hinted' : ''}
+              onClick={() => actions.chooseContract('REUSSITE', r as Rank)}
+            >
+              {rankLabel(r)}
+            </button>
+          ))}
+        </div>
+        <button className="ghost" onClick={() => setReussite(false)}>← retour</button>
+      </div>
+    );
+  }
   return (
-    <div className="modal-back">
-      <div className="modal contract-modal" onClick={(e) => e.stopPropagation()}>
-        {reussite ? (
-          <>
-            <div className="topbar">
-              <h2>🎯 Réussite</h2>
-              <button className="ghost" onClick={() => setReussite(false)}>← retour</button>
-            </div>
-            <p className="muted">Choisis la hauteur d'ouverture :</p>
-            <div className="heightrow">
-              {handRanks.map((r) => (
-                <button
-                  key={r}
-                  className={`heightbtn ${tip?.contract === 'REUSSITE' && tip.rank === r ? 'hinted' : ''}`}
-                  onClick={() => actions.chooseContract('REUSSITE', r as Rank)}
-                >
-                  {rankLabel(r)}
-                </button>
-              ))}
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="topbar">
-              <h2>À toi de donner</h2>
-            </div>
-            {tip && (
-              <p className="hinttip">
-                💡 Conseil : <b>{CONTRACT_LABEL[tip.contract]}</b>
-                {tip.contract === 'REUSSITE' && tip.rank != null ? ` (hauteur ${rankLabel(tip.rank)})` : ''}
-              </p>
-            )}
-            <div className="contract-grid">
-              {options.map((c: ContractId) => (
-                <button
-                  key={c}
-                  className={`contract-card ${tip?.contract === c ? 'hinted' : ''}`}
-                  onClick={() => (c === 'REUSSITE' ? setReussite(true) : actions.chooseContract(c))}
-                >
-                  <span className="cc-icon">{CONTRACT_ICON[c]}</span>
-                  <span className="cc-name">{CONTRACT_LABEL[c]}</span>
-                  <span className="cc-hint">{CONTRACT_HINT[c]}</span>
-                </button>
-              ))}
-            </div>
-          </>
-        )}
+    <div className="picker">
+      <p>À toi de donner. Choisis un contrat :</p>
+      {tip && (
+        <p className="hinttip">
+          💡 <b>{CONTRACT_LABEL[tip.contract]}</b>
+          {tip.contract === 'REUSSITE' && tip.rank != null ? ` (hauteur ${rankLabel(tip.rank)})` : ''}
+        </p>
+      )}
+      <div className="btnrow contract-btns">
+        {options.map((c: ContractId) => (
+          <button
+            key={c}
+            className={`contract-btn ${tip?.contract === c ? 'hinted' : ''}`}
+            title={CONTRACT_HINT[c]}
+            onClick={() => (c === 'REUSSITE' ? setReussite(true) : actions.chooseContract(c))}
+          >
+            <span className="cb-ic">{CONTRACT_ICON[c]}</span> {CONTRACT_LABEL[c]}
+          </button>
+        ))}
       </div>
     </div>
   );

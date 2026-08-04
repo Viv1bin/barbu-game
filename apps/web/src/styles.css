@@ -101,7 +101,9 @@ button.pass { background: #d9a441; padding: 4px 12px; }
 .handcard .pcard { display: block; box-shadow: 0 3px 8px #0006, inset 0 1px 0 #fff; }
 .handcard:not(:disabled):hover { transform: translateY(-16px) rotate(0deg) scale(1.04); z-index: 200 !important; }
 .handcard.playable .pcard { box-shadow: 0 4px 12px #0007, 0 0 0 1.5px #ffffff55; }
-.handcard.faded { filter: grayscale(.5) brightness(.72); }
+/* Carte injouable : nettement grisée mais toujours lisible (peu de transparence). */
+.handcard.faded .pcard { filter: grayscale(1) contrast(.92) brightness(.9); opacity: .96; }
+.handcard.faded .pcard.red { color: #6f6f6f; }
 .handcard.faded:not(:disabled):hover, .handcard:disabled { transform: rotate(var(--rot, 0deg)) translateY(var(--lift, 0px)); }
 .handcard:disabled { cursor: default; }
 .handcard.hinted { z-index: 200 !important; }
@@ -537,43 +539,62 @@ button.danger-solid { background: #e5566a; color: #fff; }
 .seatslot.active { border-style: solid; border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold); }
 .seatslot select { margin-top: 4px; width: 100%; }
 
-/* ================= Bloc Jeu : modale contrats, scores plein écran ========= */
+/* ================= Bloc Jeu : contrats inline + feuille de match =========== */
 
-/* --- Choix du contrat (modale par-dessus la table) --- */
-.contract-modal { max-width: 640px; }
-.contract-modal .topbar h2 { flex: 1; }
-.contract-grid {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px;
+/* --- Choix du contrat inline (au centre, la table reste visible) --- */
+.contract-btns { gap: 6px; }
+.contract-btn {
+  background: #ffffff14; color: var(--text); font-weight: 600; border: 1px solid #ffffff2a;
+  padding: 7px 11px; font-size: .9rem;
 }
-.contract-card {
-  display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left;
-  background: #ffffff10; color: var(--text); font-weight: 400;
-  border: 1.5px solid #ffffff22; border-radius: 14px; padding: 14px; transition: transform .1s, border-color .1s, background .1s;
-}
-.contract-card:hover { transform: translateY(-3px); border-color: var(--gold); background: #ffffff1a; }
-.contract-card.hinted { border-color: var(--gold); }
-.cc-icon { font-size: 1.9rem; line-height: 1; }
-.cc-name { font-size: 1.05rem; font-weight: 800; }
-.cc-hint { font-size: .74rem; color: var(--muted); line-height: 1.25; }
-.heightrow { display: flex; flex-wrap: wrap; gap: 8px; }
-.heightbtn { min-width: 46px; font-size: 1.1rem; font-weight: 800; padding: 10px 12px; }
+.contract-btn:hover { background: var(--gold); color: #222; }
+.contract-btn .cb-ic { margin-right: 2px; }
 
-/* --- Tableau des scores quasi plein écran --- */
-.scores-modal { max-width: min(960px, 96vw); max-height: 92vh; }
+/* --- Feuille de match (matrice donneur × contrat) --- */
+.scores-modal { max-width: min(1000px, 97vw); max-height: 92vh; }
 .scores-modal .topbar h2 { flex: 1; }
-.stable.big { font-size: .95rem; }
-.stable.big th { font-size: .82rem; padding: 8px 10px; }
-.stable.big td { padding: 7px 10px; }
-.stable.big .total { font-size: 1.15rem; }
-.stable.big .cum { font-size: .72rem; }
 
-.contracts-overview { border-top: 1px solid #ffffff1f; padding-top: 12px; }
-.contracts-overview h3 { margin: 0 0 10px; font-size: .95rem; color: var(--muted); font-weight: 600; }
-.cov-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
-.cov-player { background: #ffffff0c; border-radius: 10px; padding: 10px; }
-.cov-name { font-weight: 700; font-size: .9rem; margin-bottom: 6px; }
-.cov-chips { display: flex; flex-wrap: wrap; gap: 4px; }
-.cov-chips .cabbr { font-size: .78rem; padding: 2px 6px; }
+.standings { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+.stand {
+  display: flex; align-items: center; gap: 8px; background: #ffffff0c; border-radius: 10px;
+  padding: 8px 10px; border: 1.5px solid transparent;
+}
+.stand.lead { border-color: var(--gold); background: #e7c66b1a; }
+.stand.me .stand-name { color: var(--gold); }
+.stand-rank { font-size: .7rem; color: var(--muted); width: 14px; }
+.stand-av { font-size: 1.3rem; }
+.stand-name { flex: 1; font-size: .85rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stand-score { font-size: 1.25rem; font-weight: 800; }
+.stand.lead .stand-score { color: var(--gold); }
+
+.smatrix { border-collapse: collapse; font-size: .8rem; margin: 0 auto; }
+.smatrix th, .smatrix td { border: 1px solid #ffffff14; text-align: center; padding: 4px 6px; }
+.smatrix .corner-th { text-align: left; color: var(--muted); font-size: .7rem; position: sticky; left: 0; background: var(--panel); z-index: 2; }
+.smatrix .grp { font-size: .75rem; color: var(--muted); font-weight: 600; border-bottom: 2px solid #ffffff22; }
+.smatrix .grp .grp-av { font-size: 1.05rem; }
+.smatrix .grp.now { color: var(--gold); background: #e7c66b18; }
+.smatrix .ph { font-size: .95rem; padding: 2px 6px; color: var(--muted); }
+.smatrix .ph.me { color: var(--gold); }
+.smatrix .grp:nth-child(odd) { background: #ffffff05; }
+.smatrix .ctr-th {
+  text-align: left; white-space: nowrap; position: sticky; left: 0; background: var(--panel); z-index: 1;
+  font-weight: 600;
+}
+.smatrix .ctr-th .ctr-ic { margin-right: 4px; }
+.smatrix .ctr-nm { font-size: .78rem; }
+.smatrix .cell { min-width: 30px; font-variant-numeric: tabular-nums; color: var(--text); }
+.smatrix .cell.empty { color: #ffffff22; background: #ffffff05; }
+.smatrix .cell.neg { color: #e5876a; }   /* points pris = mauvais */
+.smatrix .cell.pos { color: #7fd88b; }   /* négatif = bon */
+.smatrix .cell.zero { color: var(--muted); }
+.smatrix .cell.me { background: #e7c66b12; }
+.smatrix .cell.now { outline: 2px solid var(--gold); outline-offset: -2px; }
+.smatrix .ctr-mark { color: #e5566a; font-weight: 700; }
+.smatrix tbody tr:nth-child(even) td.cell:not(.me):not(.empty) { background: #ffffff05; }
+.smatrix .subtotal th, .smatrix .subtotal td { border-top: 2px solid var(--gold); font-weight: 800; }
+.smatrix .subtotal th { text-align: left; color: var(--muted); font-weight: 600; }
+.smatrix .sub.me { color: var(--gold); }
+.matrix-note { margin: 4px 2px 0; font-size: .74rem; }
 
 /* --- Réussite en cartes (volume) --- */
 .rfiles { display: flex; gap: 14px; justify-content: center; margin: 8px 0; }
