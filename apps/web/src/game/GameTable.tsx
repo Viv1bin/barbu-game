@@ -118,7 +118,7 @@ export function GameTable({ view, title, onBack }: { view: TableView; title: Rea
         <div className="meta">
           <span>Manche {Math.min(state.mancheCount + 1, 28)}/28</span>
           <span>Contrat : {state.currentContract ? CONTRACT_LABEL[state.currentContract] : '—'}</span>
-          <button className="ghost" onClick={() => setShowScores(true)}>📊 Scores</button>
+          <button className="ghost" onClick={() => setShowScores(true)}>Scores</button>
           {view.onNewGame && <button className="ghost" onClick={view.onNewGame}>Nouvelle partie</button>}
         </div>
       </header>
@@ -131,10 +131,10 @@ export function GameTable({ view, title, onBack }: { view: TableView; title: Rea
 }
 
 /**
- * Feuille de match Barbu : matrice donneur × contrat (comme la feuille papier).
- * Colonnes groupées par donneur (4), chaque groupe = les 4 joueurs ; lignes = les
- * 7 contrats. Chaque case = points du joueur sur la manche donnée par ce donneur.
- * En tête : le classement. En pied de groupe : sous-total du donneur.
+ * Feuille de match Barbu, épurée : une ligne par contrat, une colonne par joueur
+ * (pseudos en en-tête). Chaque case cumule les points du joueur sur ce contrat
+ * (les 4 donnes confondues). En tête le classement, en pied le total = le score.
+ * Le moins de points gagne.
  */
 function ScoresModal({ view, onClose }: { view: TableView; onClose: () => void }) {
   const { history, state, seats } = view;
@@ -144,18 +144,23 @@ function ScoresModal({ view, onClose }: { view: TableView; onClose: () => void }
   const byKey = new Map<string, MancheLog>();
   for (const m of history) byKey.set(`${m.dealer}:${m.contract}`, m);
 
-  // Sous-total d'un donneur pour un joueur (somme de ses contrats déjà joués).
-  const groupSub = (dealer: number, player: number) => {
+  // Cumul d'un contrat pour un joueur, toutes donnes confondues (null si aucune jouée).
+  const cellFor = (contract: ContractId, player: number) => {
     let s = 0;
-    for (const c of ALL_CONTRACTS) {
-      const m = byKey.get(`${dealer}:${c}`);
-      if (m) s += m.points[player]!;
+    let played = false;
+    let contred = false;
+    for (let d = 0; d < seats.length; d++) {
+      const m = byKey.get(`${d}:${contract}`);
+      if (!m) continue;
+      s += m.points[player]!;
+      played = true;
+      if (m.contres.includes(player as PlayerId)) contred = true;
     }
-    return s;
+    return played ? { v: s, contred } : null;
   };
 
   const ranking = seats
-    .map((s, p) => ({ name: s.name, avatar: s.avatar, p, score: state.scores[p]! }))
+    .map((s, p) => ({ name: s.name, p, score: state.scores[p]! }))
     .sort((a, b) => a.score - b.score);
   const best = ranking[0]!.score;
 
@@ -163,7 +168,7 @@ function ScoresModal({ view, onClose }: { view: TableView; onClose: () => void }
     <div className="modal-back" onClick={onClose}>
       <div className="modal scores-modal" onClick={(e) => e.stopPropagation()}>
         <div className="topbar">
-          <h2>📊 Feuille de match</h2>
+          <h2>Feuille de match</h2>
           <button className="ghost" onClick={onClose}>Fermer</button>
         </div>
 
@@ -172,7 +177,6 @@ function ScoresModal({ view, onClose }: { view: TableView; onClose: () => void }
           {ranking.map((r, i) => (
             <div key={r.p} className={`stand ${r.score === best ? 'lead' : ''} ${r.p === you ? 'me' : ''}`}>
               <span className="stand-rank">{i + 1}</span>
-              <span className="stand-av">{r.avatar}</span>
               <span className="stand-name">{r.name}</span>
               <span className="stand-score">{r.score}</span>
             </div>
@@ -183,65 +187,49 @@ function ScoresModal({ view, onClose }: { view: TableView; onClose: () => void }
           <table className="smatrix">
             <thead>
               <tr>
-                <th className="corner-th" rowSpan={2}>Contrat</th>
-                {seats.map((s, d) => (
-                  <th key={d} className={`grp ${d === state.dealer ? 'now' : ''}`} colSpan={4} title={`Donne de ${s.name}`}>
-                    <span className="grp-av">{s.avatar}</span> donne
+                <th className="corner-th">Contrat</th>
+                {seats.map((s, p) => (
+                  <th key={p} className={`ph ${p === you ? 'me' : ''} ${p === state.dealer ? 'dealer' : ''}`}>
+                    {s.name}
+                    {p === state.dealer && <span className="ph-tag">donne</span>}
                   </th>
                 ))}
               </tr>
-              <tr>
-                {seats.map((_, d) =>
-                  seats.map((s, p) => (
-                    <th key={`${d}-${p}`} className={`ph ${p === you ? 'me' : ''}`} title={s.name}>
-                      {s.avatar}
-                    </th>
-                  )),
-                )}
-              </tr>
             </thead>
             <tbody>
-              {ALL_CONTRACTS.map((c) => (
-                <tr key={c}>
-                  <th className="ctr-th" title={CONTRACT_LABEL[c]}>
-                    <span className="ctr-ic">{CONTRACT_ICON[c]}</span>
-                    <span className="ctr-nm">{CONTRACT_LABEL[c]}</span>
-                  </th>
-                  {seats.map((_, d) => {
-                    const m = byKey.get(`${d}:${c}`);
-                    const isNow = d === state.dealer && state.currentContract === c;
-                    return seats.map((__, p) => {
-                      const v = m?.points[p];
-                      const contred = m?.contres.includes(p as PlayerId);
+              {ALL_CONTRACTS.map((c) => {
+                const isNow = state.currentContract === c && state.phase !== 'DONE';
+                return (
+                  <tr key={c} className={isNow ? 'now' : ''}>
+                    <th className="ctr-th">{CONTRACT_LABEL[c]}</th>
+                    {seats.map((_, p) => {
+                      const cell = cellFor(c, p);
+                      const v = cell?.v;
                       return (
                         <td
-                          key={`${d}-${p}`}
-                          className={`cell ${isNow ? 'now' : ''} ${p === you ? 'me' : ''} ${v == null ? 'empty' : v > 0 ? 'neg' : v < 0 ? 'pos' : 'zero'}`}
+                          key={p}
+                          className={`cell ${p === you ? 'me' : ''} ${v == null ? 'empty' : v > 0 ? 'neg' : v < 0 ? 'pos' : 'zero'}`}
                         >
-                          {v == null ? '' : v}
-                          {contred && <sup className="ctr-mark" title="contré">×</sup>}
+                          {v == null ? '·' : v}
+                          {cell?.contred && <sup className="ctr-mark" title="contré">×</sup>}
                         </td>
                       );
-                    });
-                  })}
-                </tr>
-              ))}
+                    })}
+                  </tr>
+                );
+              })}
             </tbody>
             <tfoot>
-              <tr className="subtotal">
-                <th>Sous-total</th>
-                {seats.map((_, d) =>
-                  seats.map((__, p) => (
-                    <td key={`${d}-${p}`} className={`sub ${p === you ? 'me' : ''}`}>
-                      {groupSub(d, p) || ''}
-                    </td>
-                  )),
-                )}
+              <tr className="total-row">
+                <th className="ctr-th">Total</th>
+                {seats.map((_, p) => (
+                  <td key={p} className={`cell ${p === you ? 'me' : ''}`}>{state.scores[p]}</td>
+                ))}
               </tr>
             </tfoot>
           </table>
         </div>
-        <p className="muted matrix-note">Chaque case : points du joueur (colonne) sur la manche donnée par le donneur (groupe). Le moins de points gagne.</p>
+        <p className="muted matrix-note">Chaque case cumule les points du joueur sur ce contrat. Le moins de points gagne.</p>
       </div>
     </div>
   );
@@ -265,9 +253,9 @@ function PokerTable({ view }: { view: TableView }) {
         >
           <div className="avatar">{seat.avatar}</div>
           <div className="sinfo">
-            <div className="sname">{seat.name}{p === state.dealer ? ' 👑' : ''}</div>
+            <div className="sname">{seat.name}{p === state.dealer && <span className="donor-tag">donne</span>}</div>
             <div className="sscore">{state.scores[p]} pts</div>
-            <div className="scards"><b>{handSizes[p] ?? 0}</b> 🂠</div>
+            <div className="scards"><b>{handSizes[p] ?? 0}</b> cartes</div>
           </div>
           {state.contres.includes(p as PlayerId) && <div className="ctag">contre</div>}
         </div>
