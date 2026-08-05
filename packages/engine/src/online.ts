@@ -16,6 +16,55 @@ export interface AuthResponse {
   account: Account;
 }
 
+// --- Social : amis, stats, présence, sauvegarde (parties en ligne) ---------
+
+/** Profil public d'un compte (amis, classements, demandes). */
+export interface PublicProfile {
+  id: string;
+  pseudo: string;
+  avatar: string;
+}
+
+/** Statistiques agrégées d'un compte — parties **en ligne** uniquement. */
+export interface PlayerStats {
+  games: number;
+  wins: number;
+  /** Cumul des points marqués (au Barbu, moins = mieux). */
+  totalPoints: number;
+  /** Meilleur (= plus bas) score obtenu sur une partie, ou null si aucune. */
+  bestScore: number | null;
+}
+
+/** Un ami : profil + ses stats + son statut de présence. */
+export interface FriendInfo extends PublicProfile {
+  stats: PlayerStats;
+  online: boolean;
+}
+
+/** Une demande d'ami en attente, entrante ou sortante. */
+export interface FriendRequestInfo extends PublicProfile {
+  direction: 'incoming' | 'outgoing';
+}
+
+/** Instantané social renvoyé au client (amis + demandes en attente). */
+export interface SocialSnapshot {
+  friends: FriendInfo[];
+  requests: FriendRequestInfo[];
+}
+
+/** Sauvegarde d'une partie solo liée au compte (reprise ultérieure). */
+export interface SavedGame {
+  /** Blob d'état opaque (sérialisé par le client solo). */
+  state: unknown;
+  updatedAt: string;
+}
+
+/** Un participant d'une partie en ligne terminée, à enregistrer dans les stats. */
+export interface GameResultEntry {
+  accountId: string;
+  score: number;
+}
+
 /**
  * État de partie caviardé envoyé à un joueur : identique à `MatchState`, mais
  * les mains adverses (`pendingHands` / `round.hands`) sont vidées et seule la
