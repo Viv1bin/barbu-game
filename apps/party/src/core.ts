@@ -8,6 +8,7 @@ import {
   type Action,
   type ClientMsg,
   type Difficulty,
+  type GameResultEntry,
   type MancheLog,
   type MatchState,
   type PlayerId,
@@ -55,6 +56,8 @@ export interface Conn {
 export interface RoomHost {
   readonly id: string;
   getConnections(): Iterable<Conn>;
+  /** Résultat d'une partie terminée (comptes humains + scores) → stats en ligne. */
+  reportResult?(entries: GameResultEntry[]): void;
 }
 
 /**
@@ -225,12 +228,22 @@ export class GameRoom {
         points: next.scores.map((sc, p) => sc - m.scores[p]!),
       });
     }
+    if (m.phase !== 'DONE' && next.phase === 'DONE') this.reportGameEnd(next);
     this.match = next;
     this.broadcast(pause);
     if (pause) {
       await sleep(TIMING.pauseMs);
       this.broadcast(null); // pli ramassé → état suivant
     }
+  }
+
+  /** Fin de partie : remonte les scores finaux des sièges humains (comptes). */
+  private reportGameEnd(final: MatchState) {
+    const entries: GameResultEntry[] = [];
+    this.seats.forEach((s, p) => {
+      if (s.kind === 'human' && s.profileId) entries.push({ accountId: s.profileId, score: final.scores[p]! });
+    });
+    if (entries.length >= 2) this.room.reportResult?.(entries);
   }
 
   // -- Diffusion -------------------------------------------------------------
