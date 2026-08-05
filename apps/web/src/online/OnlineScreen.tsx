@@ -9,6 +9,23 @@ function randomCode(): string {
   return Array.from({ length: 4 }, () => String.fromCharCode(65 + Math.floor(Math.random() * 26))).join('');
 }
 
+/** Dernière salle rejointe, mémorisée pour proposer la reprise en ligne. */
+const LAST_ROOM_KEY = 'barbu.online.last';
+const rememberRoom = (code: string) => {
+  try {
+    localStorage.setItem(LAST_ROOM_KEY, code);
+  } catch {
+    /* mode privé : tant pis */
+  }
+};
+const lastRoom = (): string | null => {
+  try {
+    return localStorage.getItem(LAST_ROOM_KEY);
+  } catch {
+    return null;
+  }
+};
+
 // ---------------------------------------------------------------------------
 // Écran « En ligne » : création/rejoint (identité = compte), puis salon/partie.
 // ---------------------------------------------------------------------------
@@ -16,7 +33,12 @@ export function OnlineScreen({ onBack, account }: { onBack: () => void; account:
   const me: OnlineIdentity = { profileId: account.id, name: account.pseudo, avatar: account.avatar };
   const [session, setSession] = useState<{ code: string } | null>(null);
 
-  if (!session) return <OnlineLanding account={account} onBack={onBack} onEnter={(code) => setSession({ code })} />;
+  const enter = (code: string) => {
+    rememberRoom(code);
+    setSession({ code });
+  };
+
+  if (!session) return <OnlineLanding account={account} onBack={onBack} onEnter={enter} />;
   return <OnlineRoom code={session.code} me={me} onLeave={() => setSession(null)} onMenu={onBack} />;
 }
 
@@ -31,6 +53,7 @@ function OnlineLanding({
 }) {
   const urlRoom = new URLSearchParams(location.search).get('room') ?? '';
   const [code, setCode] = useState(urlRoom.toUpperCase());
+  const resumeCode = lastRoom();
 
   const enter = (roomCode: string) => {
     if (!roomCode.trim()) return;
@@ -50,6 +73,12 @@ function OnlineLanding({
           <span className="pfname">{account.pseudo}</span>
         </div>
         <p>Crée une partie et partage le code, ou rejoins un code existant.</p>
+
+        {resumeCode && (
+          <button className="ghost resumeonline" onClick={() => enter(resumeCode)}>
+            ⏯️ Reprendre la partie <b>{resumeCode}</b>
+          </button>
+        )}
 
         <div className="onlineactions">
           <button onClick={() => enter(randomCode())}>Créer une partie</button>

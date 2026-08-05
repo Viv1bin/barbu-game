@@ -585,3 +585,40 @@ button.danger-solid { background: #e5566a; color: #fff; }
   display: flex; align-items: center; justify-content: center; font-size: 1.2rem; color: #ffffff55;
 }
 .rfile.red .rempty { color: #e5688a; }
+
+/* --- Amis & stats (social) --- */
+.socialtabs { flex-wrap: wrap; justify-content: center; margin-bottom: 2px; }
+.sociallist { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 520px; margin: 0 auto; }
+.addfriend label { display: block; font-size: .8rem; color: var(--muted); margin-bottom: 6px; }
+
+.friendrow { display: flex; align-items: center; gap: 8px; padding: 7px 2px; }
+.friendrow + .friendrow { border-top: 1px solid #ffffff12; }
+.friendrow .avatar { font-size: 1.3rem; }
+.frname { font-weight: 600; flex: 1; }
+.frstat { font-size: .75rem; white-space: nowrap; }
+.fractions { display: flex; gap: 6px; align-items: center; }
+
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+.dot.online { background: #5fd08a; box-shadow: 0 0 6px #5fd08a; }
+
+.rankboard { width: 100%; max-width: 420px; margin: 0 auto; }
+.rankrow {
+  display: grid; grid-template-columns: 28px 1fr 32px 40px 48px; gap: 6px; align-items: center;
+  padding: 6px 4px; font-variant-numeric: tabular-nums; font-size: .9rem;
+}
+.rankrow + .rankrow { border-top: 1px solid #ffffff12; }
+.rankhead { color: var(--muted); font-size: .72rem; }
+.rankrow.me { background: #ffffff12; border-radius: 8px; }
+.rank { text-align: center; color: var(--muted); }
+.rankwho { display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rankwho .avatar { font-size: 1.1rem; }
+
+.statcell {
+  background: #ffffff0c; border-radius: 10px; padding: 12px; border-left: 3px solid var(--gold);
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+}
+.statval { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.statlabel { font-size: .72rem; color: var(--muted); text-align: center; }
+
+.resumecard { border: 1px solid var(--gold); background: #e7c66b1a; }
+.resumeonline { align-self: stretch; border-color: var(--gold); color: var(--gold); }

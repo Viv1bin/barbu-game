@@ -1,6 +1,6 @@
 import type { Auth } from './auth/useAuth.js';
 
-export type Screen = 'menu' | 'solo' | 'online' | 'settings';
+export type Screen = 'menu' | 'solo' | 'online' | 'settings' | 'social';
 
 const MODES: { id: Screen; icon: string; title: string; desc: string; disabled?: boolean }[] = [
   { id: 'solo', icon: '🤖', title: 'Solo', desc: 'Jouer contre 3 bots. Partie complète, 28 manches.' },
@@ -39,6 +39,7 @@ export function Menu({ onPick, auth }: { onPick: (s: Screen) => void; auth: Auth
         ))}
       </div>
       <div className="menuactions">
+        <button className="ghost" onClick={() => onPick('social')}>👥 Amis &amp; stats</button>
         <button className="ghost" onClick={() => onPick('settings')}>⚙️ Mon compte</button>
       </div>
       <footer className="menufoot">Règles : contrat le plus bas gagne. 7 contrats, 28 manches.</footer>
