@@ -551,7 +551,7 @@ button.danger-solid { background: #e5566a; color: #fff; }
 .contract-btn .cb-ic { margin-right: 2px; }
 
 /* --- Feuille de match (contrats × joueurs, épurée) --- */
-.scores-modal { max-width: min(860px, 96vw); max-height: 94vh; display: flex; flex-direction: column; }
+.scores-modal { max-width: min(1040px, 97vw); max-height: 94vh; display: flex; flex-direction: column; }
 .scores-modal .topbar h2 { flex: 1; }
 .scores-modal .tablewrap { flex: 1; }
 
@@ -567,30 +567,32 @@ button.danger-solid { background: #e5566a; color: #fff; }
 .stand-score { font-size: 1.5rem; font-weight: 800; font-variant-numeric: tabular-nums; }
 .stand.lead .stand-score { color: var(--gold); }
 
-.smatrix { border-collapse: collapse; width: 100%; font-size: 1rem; }
-.smatrix th, .smatrix td { border: 1px solid #ffffff16; text-align: center; padding: 11px 10px; }
-.smatrix .corner-th { text-align: left; color: var(--muted); font-size: .85rem; font-weight: 600; }
-.smatrix .ph {
-  font-size: 1rem; font-weight: 700; color: var(--text);
-  display: flex; flex-direction: column; align-items: center; gap: 3px;
+.smatrix { border-collapse: collapse; margin: 0 auto; font-size: .9rem; }
+.smatrix th, .smatrix td { border: 1px solid #ffffff16; text-align: center; padding: 7px 9px; }
+.smatrix .corner-th {
+  text-align: left; color: var(--muted); font-size: .82rem; font-weight: 600;
+  position: sticky; left: 0; background: var(--panel); z-index: 2;
 }
+.smatrix .grp { font-size: .9rem; font-weight: 700; color: var(--text); border-bottom: 2px solid #ffffff22; }
+.smatrix .grp .grp-tag { font-size: .68rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+.smatrix .grp.now { color: var(--gold); background: #e7c66b14; }
+.smatrix .grp:nth-of-type(even) { background: #ffffff05; }
+.smatrix .ph { font-size: .8rem; font-weight: 600; color: var(--muted); padding: 4px 9px; }
 .smatrix .ph.me { color: var(--gold); }
-.smatrix .ph.dealer { background: #e7c66b12; }
-.smatrix .ph-tag {
-  font-size: .62rem; font-weight: 700; letter-spacing: .5px; text-transform: uppercase;
-  color: #222; background: var(--gold); border-radius: 6px; padding: 1px 6px;
+.smatrix .ctr-th {
+  text-align: left; white-space: nowrap; font-weight: 600;
+  position: sticky; left: 0; background: var(--panel); z-index: 1;
 }
-.smatrix .ctr-th { text-align: left; white-space: nowrap; font-weight: 600; }
-.smatrix .cell { min-width: 62px; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text); }
-.smatrix .cell.empty { color: #ffffff30; font-weight: 400; }
+.smatrix .cell { min-width: 38px; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text); }
+.smatrix .cell.empty { color: #ffffff22; }
 .smatrix .cell.neg { color: #e5876a; }   /* points pris = mauvais */
 .smatrix .cell.pos { color: #7fd88b; }   /* négatif = bon */
 .smatrix .cell.zero { color: var(--muted); }
 .smatrix .cell.me { background: #e7c66b12; }
+.smatrix .cell.now { outline: 2px solid var(--gold); outline-offset: -2px; }
 .smatrix .ctr-mark { color: #e5566a; font-weight: 700; font-size: .7em; margin-left: 1px; }
 .smatrix tbody tr:nth-child(even) td.cell:not(.me):not(.empty) { background: #ffffff05; }
-.smatrix tbody tr.now { outline: 2px solid var(--gold); outline-offset: -2px; }
-.smatrix .total-row th, .smatrix .total-row td { border-top: 2px solid var(--gold); font-weight: 800; font-size: 1.15rem; }
+.smatrix .total-row th, .smatrix .total-row td { border-top: 2px solid var(--gold); font-weight: 800; }
 .smatrix .total-row .ctr-th { color: var(--muted); }
 .matrix-note { margin: 8px 2px 0; font-size: .8rem; }
 

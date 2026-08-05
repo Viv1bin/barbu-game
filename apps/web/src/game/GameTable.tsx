@@ -130,11 +130,18 @@ export function GameTable({ view, title, onBack }: { view: TableView; title: Rea
   );
 }
 
+/** Initiales courtes d'un pseudo pour les 16 sous-colonnes ("Bot Ouest" → "BO"). */
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return (parts[0]![0]! + parts[1]![0]!).toUpperCase();
+  return name.slice(0, 2);
+}
+
 /**
- * Feuille de match Barbu, épurée : une ligne par contrat, une colonne par joueur
- * (pseudos en en-tête). Chaque case cumule les points du joueur sur ce contrat
- * (les 4 donnes confondues). En tête le classement, en pied le total = le score.
- * Le moins de points gagne.
+ * Feuille de match Barbu : matrice donneur × contrat, comme la feuille papier.
+ * En-tête = 4 groupes « <pseudo> donne », chacun avec les 4 joueurs (initiales).
+ * Lignes = les 7 contrats. Chaque case = points du joueur sur cette manche.
+ * TOTAL = sous-total par (donneur, joueur). Classement en tête. Sans emoji.
  */
 function ScoresModal({ view, onClose }: { view: TableView; onClose: () => void }) {
   const { history, state, seats } = view;
@@ -144,19 +151,15 @@ function ScoresModal({ view, onClose }: { view: TableView; onClose: () => void }
   const byKey = new Map<string, MancheLog>();
   for (const m of history) byKey.set(`${m.dealer}:${m.contract}`, m);
 
-  // Cumul d'un contrat pour un joueur, toutes donnes confondues (null si aucune jouée).
-  const cellFor = (contract: ContractId, player: number) => {
+  // Sous-total d'un donneur pour un joueur (somme des contrats déjà joués).
+  const groupSub = (dealer: number, player: number) => {
     let s = 0;
-    let played = false;
-    let contred = false;
-    for (let d = 0; d < seats.length; d++) {
-      const m = byKey.get(`${d}:${contract}`);
-      if (!m) continue;
-      s += m.points[player]!;
-      played = true;
-      if (m.contres.includes(player as PlayerId)) contred = true;
+    let any = false;
+    for (const c of ALL_CONTRACTS) {
+      const m = byKey.get(`${dealer}:${c}`);
+      if (m) { s += m.points[player]!; any = true; }
     }
-    return played ? { v: s, contred } : null;
+    return any ? s : null;
   };
 
   const ranking = seats
@@ -187,49 +190,65 @@ function ScoresModal({ view, onClose }: { view: TableView; onClose: () => void }
           <table className="smatrix">
             <thead>
               <tr>
-                <th className="corner-th">Contrat</th>
-                {seats.map((s, p) => (
-                  <th key={p} className={`ph ${p === you ? 'me' : ''} ${p === state.dealer ? 'dealer' : ''}`}>
-                    {s.name}
-                    {p === state.dealer && <span className="ph-tag">donne</span>}
+                <th className="corner-th" rowSpan={2}>Contrat</th>
+                {seats.map((s, d) => (
+                  <th key={d} className={`grp ${d === state.dealer ? 'now' : ''}`} colSpan={4}>
+                    {s.name} <span className="grp-tag">donne</span>
                   </th>
                 ))}
               </tr>
+              <tr>
+                {seats.map((_, d) =>
+                  seats.map((s, p) => (
+                    <th key={`${d}-${p}`} className={`ph ${p === you ? 'me' : ''}`} title={s.name}>
+                      {initials(s.name)}
+                    </th>
+                  )),
+                )}
+              </tr>
             </thead>
             <tbody>
-              {ALL_CONTRACTS.map((c) => {
-                const isNow = state.currentContract === c && state.phase !== 'DONE';
-                return (
-                  <tr key={c} className={isNow ? 'now' : ''}>
-                    <th className="ctr-th">{CONTRACT_LABEL[c]}</th>
-                    {seats.map((_, p) => {
-                      const cell = cellFor(c, p);
-                      const v = cell?.v;
+              {ALL_CONTRACTS.map((c) => (
+                <tr key={c}>
+                  <th className="ctr-th">{CONTRACT_LABEL[c]}</th>
+                  {seats.map((_, d) => {
+                    const m = byKey.get(`${d}:${c}`);
+                    const isNow = d === state.dealer && state.currentContract === c && state.phase !== 'DONE';
+                    return seats.map((__, p) => {
+                      const v = m?.points[p];
+                      const contred = m?.contres.includes(p as PlayerId);
                       return (
                         <td
-                          key={p}
-                          className={`cell ${p === you ? 'me' : ''} ${v == null ? 'empty' : v > 0 ? 'neg' : v < 0 ? 'pos' : 'zero'}`}
+                          key={`${d}-${p}`}
+                          className={`cell ${isNow ? 'now' : ''} ${p === you ? 'me' : ''} ${v == null ? 'empty' : v > 0 ? 'neg' : v < 0 ? 'pos' : 'zero'}`}
                         >
-                          {v == null ? '·' : v}
-                          {cell?.contred && <sup className="ctr-mark" title="contré">×</sup>}
+                          {v == null ? '' : v}
+                          {contred && <sup className="ctr-mark" title="contré">×</sup>}
                         </td>
                       );
-                    })}
-                  </tr>
-                );
-              })}
+                    });
+                  })}
+                </tr>
+              ))}
             </tbody>
             <tfoot>
               <tr className="total-row">
                 <th className="ctr-th">Total</th>
-                {seats.map((_, p) => (
-                  <td key={p} className={`cell ${p === you ? 'me' : ''}`}>{state.scores[p]}</td>
-                ))}
+                {seats.map((_, d) =>
+                  seats.map((__, p) => {
+                    const s = groupSub(d, p);
+                    return (
+                      <td key={`${d}-${p}`} className={`cell ${p === you ? 'me' : ''} ${s == null ? 'empty' : ''}`}>
+                        {s == null ? '' : s}
+                      </td>
+                    );
+                  }),
+                )}
               </tr>
             </tfoot>
           </table>
         </div>
-        <p className="muted matrix-note">Chaque case cumule les points du joueur sur ce contrat. Le moins de points gagne.</p>
+        <p className="muted matrix-note">Chaque colonne = un joueur ; chaque groupe = les manches d'un donneur. Le moins de points gagne.</p>
       </div>
     </div>
   );
