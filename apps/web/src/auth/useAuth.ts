@@ -7,6 +7,8 @@ const TOKEN_KEY = 'barbu.auth.v1';
 export interface Auth {
   /** Compte connecté, ou null si déconnecté. */
   account: Account | null;
+  /** Token de session (pour les appels authentifiés /social/*), ou null. */
+  token: string | null;
   /** true pendant la vérification initiale du token au démarrage. */
   loading: boolean;
   register: (pseudo: string, password: string, avatar: string) => Promise<void>;
@@ -94,7 +96,7 @@ export function useAuth(): Auth {
     [token],
   );
 
-  return { account, loading, register, login, logout, updateProfile };
+  return { account, token, loading, register, login, logout, updateProfile };
 }
 
 export { ApiError };

@@ -21,16 +21,22 @@ const BOT_DELAY = 650; // ms entre deux coups de bot (voir les cartes tomber)
 const SHOW_MS = 1100; // ms d'affichage d'un pli complet
 const COLLECT_MS = 550; // ms d'animation « le gagnant ramasse le pli »
 
-/** RNG déterministe (mulberry32). */
-function mulberry(seed: number): () => number {
+/** RNG déterministe (mulberry32) dont l'état interne est lisible/réglable (pour la sauvegarde). */
+export interface Rng {
+  (): number;
+  state: number;
+}
+function mulberry(seed: number): Rng {
   let a = seed >>> 0;
-  return () => {
+  const fn = (() => {
     a |= 0;
     a = (a + 0x6d2b79f5) | 0;
     let t = Math.imul(a ^ (a >>> 15), 1 | a);
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+  }) as Rng;
+  Object.defineProperty(fn, 'state', { get: () => a >>> 0, set: (v: number) => (a = v >>> 0) });
+  return fn;
 }
 
 export interface TrickPause {
@@ -47,6 +53,26 @@ export interface SoloManche {
   contres: PlayerId[];
   /** Points marqués par chaque joueur sur cette manche (contres appliqués). */
   points: number[];
+}
+
+/** Blob de sauvegarde d'une partie solo, persisté côté compte (opaque au serveur). */
+export interface SoloSave {
+  v: 1;
+  level: Difficulty;
+  /** État interne du RNG au point de reprise (début de manche). */
+  rng: number;
+  state: MatchState;
+  history: SoloManche[];
+}
+
+/** Options de reprise / sauvegarde de la partie solo. */
+export interface SoloOptions {
+  /** Sauvegarde à reprendre au montage (sinon nouvelle partie). */
+  resume?: SoloSave | null;
+  /** Appelé à chaque nouvelle manche pour persister l'état (point de reprise). */
+  onPersist?: (save: SoloSave) => void;
+  /** Appelé quand la partie se termine ou est relancée (efface la sauvegarde). */
+  onClear?: () => void;
 }
 
 export interface SoloGame {
@@ -73,12 +99,17 @@ export interface SoloGame {
   newGame: () => void;
 }
 
-export function useSoloGame(level: Difficulty, aid = false): SoloGame {
-  const rngRef = useRef<() => number>(mulberry((Math.random() * 2 ** 32) >>> 0));
-  const [state, setState] = useState<MatchState>(() => createMatch(rngRef.current));
+export function useSoloGame(level: Difficulty, aid = false, opts: SoloOptions = {}): SoloGame {
+  const resume = opts.resume;
+  const rngRef = useRef<Rng>(mulberry((Math.random() * 2 ** 32) >>> 0));
+  // Reprise : réinjecte l'état RNG sauvegardé (une seule fois, au tout premier rendu).
+  const initedRef = useRef(false);
+  if (!initedRef.current && resume) rngRef.current.state = resume.rng;
+  const [state, setState] = useState<MatchState>(() => (resume ? resume.state : createMatch(rngRef.current)));
   const [pause, setPause] = useState<TrickPause | null>(null);
-  const [history, setHistory] = useState<SoloManche[]>([]);
+  const [history, setHistory] = useState<SoloManche[]>(() => (resume ? resume.history : []));
   const dealRef = useRef<Card[][] | null>(null);
+  initedRef.current = true;
 
   // Mémorise la donne complète tant qu'elle est disponible (avant le jeu).
   if (state.pendingHands) dealRef.current = state.pendingHands.map((h) => h.slice());
@@ -121,7 +152,11 @@ export function useSoloGame(level: Difficulty, aid = false): SoloGame {
         contres: state.contres,
         points: next.scores.map((sc, p) => sc - state.scores[p]!),
       };
-      setHistory((h) => [...h, entry]);
+      const nextHistory = [...history, entry];
+      setHistory(nextHistory);
+      // Fin de manche = point de reprise : on sauvegarde (ou on efface si partie finie).
+      if (next.phase === 'DONE') opts.onClear?.();
+      else opts.onPersist?.({ v: 1, level, rng: rngRef.current.state, state: next, history: nextHistory });
     }
     setState(next);
     if (nextPause) setPause(nextPause);
@@ -160,6 +195,7 @@ export function useSoloGame(level: Difficulty, aid = false): SoloGame {
     reussitePlay: (card) => step({ t: 'REUSSITE_PLAY', player: HUMAN, card }),
     reussitePass: () => step({ t: 'REUSSITE_PASS', player: HUMAN }),
     newGame: () => {
+      opts.onClear?.();
       rngRef.current = mulberry((Math.random() * 2 ** 32) >>> 0);
       setPause(null);
       setHistory([]);
