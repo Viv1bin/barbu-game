@@ -39,8 +39,8 @@ export function Menu({ onPick, auth }: { onPick: (s: Screen) => void; auth: Auth
         ))}
       </div>
       <div className="menuactions">
-        <button className="ghost" onClick={() => onPick('social')}>👥 Amis &amp; stats</button>
-        <button className="ghost" onClick={() => onPick('settings')}>⚙️ Mon compte</button>
+        <button className="ghost" onClick={() => onPick('social')}>Amis &amp; stats</button>
+        <button className="ghost" onClick={() => onPick('settings')}>Mon compte</button>
       </div>
       <footer className="menufoot">Règles : contrat le plus bas gagne. 7 contrats, 28 manches.</footer>
     </div>
