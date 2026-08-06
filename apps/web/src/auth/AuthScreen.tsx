@@ -73,7 +73,7 @@ export function AuthScreen({ auth }: { auth: Auth }) {
             </div>
           )}
 
-          {error && <p className="errline">⚠️ {error}</p>}
+          {error && <p className="errline">{error}</p>}
 
           <button disabled={!ready} onClick={submit}>
             {busy ? '…' : mode === 'login' ? 'Se connecter' : 'Créer mon compte'}

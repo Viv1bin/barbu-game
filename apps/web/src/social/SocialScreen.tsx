@@ -24,7 +24,7 @@ export function SocialScreen({ onBack, token, me }: { onBack: () => void; token:
         <button className={tab === 'stats' ? 'on' : 'ghost'} onClick={() => setTab('stats')}>Mes stats</button>
       </div>
 
-      {social.error && <p className="errline">⚠️ {social.error}</p>}
+      {social.error && <p className="errline">{social.error}</p>}
       {social.loading ? (
         <p className="muted">Chargement…</p>
       ) : tab === 'friends' ? (
@@ -81,8 +81,8 @@ function FriendsTab({ social }: { social: ReturnType<typeof useSocial> }) {
           />
           <button disabled={busy || !pseudo.trim()}>Envoyer</button>
         </div>
-        {error && <p className="errline">⚠️ {error}</p>}
-        {notice && <p className="okline">✓ {notice}</p>}
+        {error && <p className="errline">{error}</p>}
+        {notice && <p className="okline">{notice}</p>}
       </form>
 
       {incoming.length > 0 && (

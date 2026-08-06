@@ -71,8 +71,8 @@ export function SettingsScreen({ onBack, auth }: { onBack: () => void; auth: Aut
             </div>
           </div>
 
-          {error && <p className="errline">⚠️ {error}</p>}
-          {notice && <p className="okline">✓ {notice}</p>}
+          {error && <p className="errline">{error}</p>}
+          {notice && <p className="okline">{notice}</p>}
         </div>
 
         <div className="panel">
