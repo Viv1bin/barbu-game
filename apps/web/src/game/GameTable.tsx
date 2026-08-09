@@ -126,8 +126,8 @@ export function GameTable({ view, title, onBack }: { view: TableView; title: Rea
       </header>
 
       <PokerTable view={view} />
+      {choosing && <ContractBar view={view} />}
       <HumanDock view={view} />
-      {choosing && <ContractModal view={view} />}
       {showScores && <ScoresModal view={view} onClose={() => setShowScores(false)} />}
     </div>
   );
@@ -281,7 +281,7 @@ function Center({ view }: { view: TableView }) {
   if (pause) return <TrickCards trick={pause.trick} winner={pause.winner} collecting={pause.collecting} you={you} />;
   if (state.phase === 'DONE') return <DoneScreen view={view} />;
   if (state.phase === 'CHOOSE_CONTRACT') {
-    if (state.dealer === you) return <Waiting text="À toi de donner — choisis ton contrat." />;
+    if (state.dealer === you) return <Waiting text="Choisis ton contrat ci-dessous ↓" />;
     return <Waiting text={`${seats[state.dealer]!.name} choisit le contrat…`} />;
   }
   if (state.phase === 'CONTRE') {
@@ -372,62 +372,59 @@ function ReussiteView({ round, seats }: { round: ReussiteState; seats: SeatLabel
   );
 }
 
-/** Choix du contrat, dans une vraie interface qui s'ouvre au-dessus de la table. */
-function ContractModal({ view }: { view: TableView }) {
+/**
+ * Choix du contrat : barre compacte posée au-dessus de la main, sans voile ni
+ * scrim — la table et tes cartes restent visibles pendant que tu choisis.
+ */
+function ContractBar({ view }: { view: TableView }) {
   const { state, hint, you, actions } = view;
   const [reussite, setReussite] = useState(false);
   const options = legalContracts(state);
   const handRanks = [...new Set((state.pendingHands?.[you] ?? []).map((c) => c.rank))].sort((a, b) => b - a);
   const tip = hint?.t === 'CHOOSE_CONTRACT' ? hint : null;
 
+  if (reussite) {
+    return (
+      <div className="contract-bar">
+        <div className="cb-head">
+          <b>Réussite — hauteur d'ouverture ?</b>
+          <button className="ghost tiny" onClick={() => setReussite(false)}>← retour</button>
+        </div>
+        <div className="cb-row">
+          {handRanks.map((r) => (
+            <button
+              key={r}
+              className={`cb-chip cb-height ${tip?.contract === 'REUSSITE' && tip.rank === r ? 'hinted' : ''}`}
+              onClick={() => actions.chooseContract('REUSSITE', r as Rank)}
+            >
+              {rankLabel(r)}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="modal-back">
-      <div className="modal contract-modal" onClick={(e) => e.stopPropagation()}>
-        {reussite ? (
-          <>
-            <div className="topbar">
-              <h2>🎯 Réussite</h2>
-              <button className="ghost" onClick={() => setReussite(false)}>← retour</button>
-            </div>
-            <p className="muted">Choisis la hauteur d'ouverture :</p>
-            <div className="heightrow">
-              {handRanks.map((r) => (
-                <button
-                  key={r}
-                  className={`heightbtn ${tip?.contract === 'REUSSITE' && tip.rank === r ? 'hinted' : ''}`}
-                  onClick={() => actions.chooseContract('REUSSITE', r as Rank)}
-                >
-                  {rankLabel(r)}
-                </button>
-              ))}
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="topbar">
-              <h2>À toi de donner</h2>
-            </div>
-            {tip && (
-              <p className="hinttip">
-                💡 Conseil : <b>{CONTRACT_LABEL[tip.contract]}</b>
-                {tip.contract === 'REUSSITE' && tip.rank != null ? ` (hauteur ${rankLabel(tip.rank)})` : ''}
-              </p>
-            )}
-            <div className="contract-grid">
-              {options.map((c: ContractId) => (
-                <button
-                  key={c}
-                  className={`contract-card ${tip?.contract === c ? 'hinted' : ''}`}
-                  onClick={() => (c === 'REUSSITE' ? setReussite(true) : actions.chooseContract(c))}
-                >
-                  <span className="cc-icon">{CONTRACT_ICON[c]}</span>
-                  <span className="cc-name">{CONTRACT_LABEL[c]}</span>
-                  <span className="cc-hint">{CONTRACT_HINT[c]}</span>
-                </button>
-              ))}
-            </div>
-          </>
+    <div className="contract-bar">
+      <div className="cb-head">
+        <b>À toi de donner — choisis un contrat</b>
+        {tip && (
+          <span className="cb-tip">💡 {CONTRACT_LABEL[tip.contract]}{tip.contract === 'REUSSITE' && tip.rank != null ? ` (${rankLabel(tip.rank)})` : ''}</span>
         )}
+      </div>
+      <div className="cb-row">
+        {options.map((c: ContractId) => (
+          <button
+            key={c}
+            className={`cb-chip ${tip?.contract === c ? 'hinted' : ''}`}
+            title={CONTRACT_HINT[c]}
+            onClick={() => (c === 'REUSSITE' ? setReussite(true) : actions.chooseContract(c))}
+          >
+            <span className="cb-ic">{CONTRACT_ICON[c]}</span>
+            {CONTRACT_LABEL[c]}
+          </button>
+        ))}
       </div>
     </div>
   );
