@@ -97,6 +97,8 @@ export interface SoloGame {
   reussitePlay: (card: Card) => void;
   reussitePass: () => void;
   newGame: () => void;
+  /** Instantané reprenable de la partie à cet instant (pour sauvegarde manuelle). */
+  snapshot: () => SoloSave;
 }
 
 export function useSoloGame(level: Difficulty, aid = false, opts: SoloOptions = {}): SoloGame {
@@ -201,5 +203,6 @@ export function useSoloGame(level: Difficulty, aid = false, opts: SoloOptions = 
       setHistory([]);
       setState(createMatch(rngRef.current));
     },
+    snapshot: () => ({ v: 1, level, rng: rngRef.current.state, state, history }),
   };
 }

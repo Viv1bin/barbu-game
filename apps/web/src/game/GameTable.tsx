@@ -28,6 +28,7 @@ import {
   rankLabel,
 } from '../format.js';
 import { PlayingCard } from './Card.js';
+import { sortHand, useCardSort } from './cardSort.js';
 
 // ---------------------------------------------------------------------------
 // Vue de table normalisée, partagée par le solo et le mode en ligne. Chaque
@@ -96,32 +97,45 @@ function isTrick(r: MatchState['round']): r is TrickRoundState {
 function isReussite(r: MatchState['round']): r is ReussiteState {
   return !!r && 'files' in r;
 }
-function sortHand(cards: Card[]): Card[] {
-  return [...cards].sort(
-    (a, b) => SUIT_ORDER.indexOf(a.suit) - SUIT_ORDER.indexOf(b.suit) || b.rank - a.rank
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Racine : en-tête + table + dock + tableau des scores + modale de contrat.
 // ---------------------------------------------------------------------------
-export function GameTable({ view, title, onBack }: { view: TableView; title: ReactNode; onBack: () => void }) {
+/** Options de sortie d'une partie solo : le bouton « Menu » ouvre alors une
+ *  popup Sauvegarder / Supprimer plutôt que de quitter directement. */
+export interface LeaveOptions {
+  onSave: () => void;
+  onDiscard: () => void;
+}
+
+export function GameTable({
+  view,
+  title,
+  onBack,
+  leaveOptions,
+}: {
+  view: TableView;
+  title: ReactNode;
+  onBack: () => void;
+  leaveOptions?: LeaveOptions;
+}) {
   const { state } = view;
   const [showScores, setShowScores] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const choosing = state.phase === 'CHOOSE_CONTRACT' && state.dealer === view.you && !view.pause;
+  const done = state.phase === 'DONE';
 
   return (
     <div className="app solo">
       <header>
         <div className="topbar">
-          <button className="ghost" onClick={onBack}>← Menu</button>
+          <button className="ghost" onClick={() => (leaveOptions && !done ? setLeaving(true) : onBack())}>← Menu</button>
           <h1>Barbu <span className="mode">{title}</span></h1>
         </div>
         <div className="meta">
           <span>Manche {Math.min(state.mancheCount + 1, 28)}/28</span>
           <span>Contrat : {state.currentContract ? CONTRACT_LABEL[state.currentContract] : '—'}</span>
           <button className="ghost" onClick={() => setShowScores(true)}>📊 Scores</button>
-          {view.onNewGame && <button className="ghost" onClick={view.onNewGame}>Nouvelle partie</button>}
         </div>
       </header>
 
@@ -129,6 +143,30 @@ export function GameTable({ view, title, onBack }: { view: TableView; title: Rea
       {choosing && <ContractBar view={view} />}
       <HumanDock view={view} />
       {showScores && <ScoresModal view={view} onClose={() => setShowScores(false)} />}
+      {leaving && leaveOptions && (
+        <LeaveDialog
+          onSave={() => { leaveOptions.onSave(); onBack(); }}
+          onDiscard={() => { leaveOptions.onDiscard(); onBack(); }}
+          onCancel={() => setLeaving(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Popup à la sortie d'une partie solo : garder (reprendre plus tard) ou supprimer. */
+function LeaveDialog({ onSave, onDiscard, onCancel }: { onSave: () => void; onDiscard: () => void; onCancel: () => void }) {
+  return (
+    <div className="modal-back" onClick={onCancel}>
+      <div className="modal leave-modal" onClick={(e) => e.stopPropagation()}>
+        <h2>Quitter la partie ?</h2>
+        <p className="muted">Tu peux la garder pour la reprendre plus tard, ou la supprimer définitivement.</p>
+        <div className="leave-actions">
+          <button onClick={onSave}>💾 Garder et quitter</button>
+          <button className="danger" onClick={onDiscard}>🗑️ Supprimer la partie</button>
+          <button className="ghost" onClick={onCancel}>Continuer à jouer</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -450,6 +488,7 @@ function ContrePanel({ view }: { view: TableView }) {
 // ---------------------------------------------------------------------------
 function HumanDock({ view }: { view: TableView }) {
   const { state, busy, hint, you, actor, actions } = view;
+  const [sortPref] = useCardSort();
   const round = state.round;
   const hand = isTrick(round) || isReussite(round) ? round.hands[you]! : state.pendingHands?.[you] ?? [];
   const myTurn = !busy && state.phase === 'PLAY' && actor === you;
@@ -471,7 +510,7 @@ function HumanDock({ view }: { view: TableView }) {
     else if (isReussite(round)) actions.reussitePlay(card);
   };
 
-  const cards = sortHand(hand);
+  const cards = sortHand(hand, sortPref);
   const n = cards.length;
 
   return (
@@ -513,6 +552,7 @@ function HumanDock({ view }: { view: TableView }) {
 
 function DoneScreen({ view }: { view: TableView }) {
   const { state, lastDeal, seats, onNewGame } = view;
+  const [sortPref] = useCardSort();
   const [reveal, setReveal] = useState(false);
   const ranking = seats.map((s, p) => ({ name: s.name, p, score: state.scores[p]! })).sort((a, b) => a.score - b.score);
   return (
@@ -537,7 +577,7 @@ function DoneScreen({ view }: { view: TableView }) {
             <div key={p} className="rrow">
               <span className="rname">{s.name}</span>
               <span className="rhand">
-                {sortHand(lastDeal[p] ?? []).map((c) => (
+                {sortHand(lastDeal[p] ?? [], sortPref).map((c) => (
                   <PlayingCard key={cardId(c)} card={c} size="sm" />
                 ))}
               </span>

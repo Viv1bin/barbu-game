@@ -152,7 +152,10 @@ button.pass { padding: 8px 16px; }
 .handcard.playable .pcard { box-shadow: 0 4px 12px #0007, 0 0 0 1.5px #ffffff55; }
 .handcard.faded { filter: grayscale(.5) brightness(.72); }
 .handcard.faded:not(:disabled):hover, .handcard:disabled { transform: rotate(var(--rot, 0deg)) translateY(var(--lift, 0px)); }
-.handcard:disabled { cursor: default; }
+/* Une carte désactivée (ex. pendant le choix du contrat) reste pleinement
+   visible : l'opacité globale des boutons désactivés ne doit pas la ternir.
+   Le seul assombrissement voulu est `.faded` (cartes injouables à ton tour). */
+.handcard:disabled { cursor: default; opacity: 1; }
 .handcard.hinted { z-index: 200 !important; }
 .handcard.hinted .pcard { box-shadow: 0 0 0 3px var(--gold), 0 0 16px #f5c04288, 0 4px 12px #0007; }
 
@@ -530,7 +533,7 @@ button.danger:not(:disabled):hover { background: #ef6a8018; border-color: var(--
 .menuactions { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
 .menuactions button { font-size: .88rem; }
 
-.settings-main { align-items: flex-start; }
+.settings-main { flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 16px; width: 100%; max-width: 640px; margin: 0 auto; }
 .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 18px; width: 100%; display: flex; flex-direction: column; gap: 14px; box-shadow: var(--shadow-1); }
 .panelhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .panelhead h3 { margin: 0; font-size: 1rem; }
@@ -763,3 +766,34 @@ button.danger-solid { background: #e5566a; color: #fff; }
 /* Statut ami plus lisible */
 .frstat { display: inline-flex; align-items: center; gap: 6px; font-size: .78rem; color: var(--muted); white-space: nowrap; }
 .frstat.on { color: var(--success); }
+
+/* --- Popup de sortie de partie solo (Garder / Supprimer) --- */
+.leave-modal { max-width: 420px; text-align: center; display: flex; flex-direction: column; gap: 12px; padding: 22px; }
+.leave-modal h2 { margin: 0; }
+.leave-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+.leave-actions button { width: 100%; }
+
+/* --- Liste des parties sauvegardées (solo + réglages) --- */
+.savedlist { display: flex; flex-direction: column; gap: 8px; }
+.savedrow { display: flex; align-items: stretch; gap: 8px; }
+.savedmain {
+  flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  text-align: left; background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--r-md); padding: 10px 14px;
+}
+.savedmain:not(:disabled):hover { border-color: var(--gold); background: var(--surface-3); }
+.savedlevel { font-weight: 600; }
+.savedmeta { font-size: .8rem; color: var(--muted); }
+.savedrow .danger { align-self: center; }
+
+/* --- Tri des cartes (réglages) --- */
+.suitorder { display: flex; gap: 10px; flex-wrap: wrap; }
+.suitchip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-md); padding: 4px 8px;
+}
+.suitchip.red .suitsym { color: #e5484d; }
+.suitchip.black .suitsym { color: var(--gold-ink, #e8e2d0); }
+.suitchip .suitsym { font-size: 1.35rem; line-height: 1; min-width: 20px; text-align: center; }
+.suitchip .tiny { padding: 2px 8px; }
+.sortpreview { display: flex; gap: 4px; align-items: flex-end; flex-wrap: wrap; }
