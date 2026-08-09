@@ -296,12 +296,12 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
-/** Point d'entrée Worker : /auth/* → comptes, sinon /parties/main/:code → salle. */
+/** Point d'entrée Worker : /auth/* et /social/* → comptes, sinon /parties/main/:code → salle. */
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
-    if (url.pathname.startsWith('/auth/')) {
+    if (url.pathname.startsWith('/auth/') || url.pathname.startsWith('/social/')) {
       const stub = env.Auth.get(env.Auth.idFromName('global'));
       return stub.fetch(request);
     }
