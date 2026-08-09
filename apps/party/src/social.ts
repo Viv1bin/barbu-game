@@ -46,9 +46,11 @@ export interface SocialDB {
   stats(id: string): StatsRow | undefined;
   saveStats(row: StatsRow): void;
 
-  savedGame(id: string): SavedGame | undefined;
-  putSavedGame(id: string, state: unknown): void;
-  deleteSavedGame(id: string): void;
+  /** Parties solo sauvegardées d'un compte, plus récente d'abord. */
+  listSavedGames(accountId: string): SavedGame[];
+  getSavedGame(accountId: string, gameId: string): SavedGame | undefined;
+  putSavedGame(accountId: string, gameId: string, state: unknown): void;
+  deleteSavedGame(accountId: string, gameId: string): void;
 
   /** Marque `id` comme actif « maintenant ». */
   touchPresence(id: string): void;
@@ -68,6 +70,13 @@ export class SocialError extends Error {
 }
 
 const EMPTY_STATS: PlayerStats = { games: 0, wins: 0, totalPoints: 0, bestScore: null };
+
+/** Valide l'identifiant de partie fourni par le client (non vide, longueur bornée). */
+function gameKey(gameId: unknown): string {
+  const g = typeof gameId === 'string' ? gameId.trim() : '';
+  if (!g || g.length > 64) throw new SocialError('Identifiant de partie invalide.');
+  return g;
+}
 
 // --- Logique métier ------------------------------------------------------
 
@@ -158,19 +167,24 @@ export class SocialLogic {
     return this.statsFor(id);
   }
 
-  // -- Sauvegarde solo (un emplacement par compte) --------------------------
+  // -- Sauvegardes solo (plusieurs parties par compte) ----------------------
 
-  saveGame(id: string, state: unknown): { ok: true } {
-    this.db.putSavedGame(id, state);
+  /** Liste des parties solo en cours du compte (plus récente d'abord). */
+  listGames(id: string): SavedGame[] {
+    return this.db.listSavedGames(id);
+  }
+
+  saveGame(id: string, gameId: unknown, state: unknown): { ok: true } {
+    this.db.putSavedGame(id, gameKey(gameId), state);
     return { ok: true };
   }
 
-  loadGame(id: string): SavedGame | null {
-    return this.db.savedGame(id) ?? null;
+  loadGame(id: string, gameId: unknown): SavedGame | null {
+    return this.db.getSavedGame(id, gameKey(gameId)) ?? null;
   }
 
-  deleteGame(id: string): { ok: true } {
-    this.db.deleteSavedGame(id);
+  deleteGame(id: string, gameId: unknown): { ok: true } {
+    this.db.deleteSavedGame(id, gameKey(gameId));
     return { ok: true };
   }
 

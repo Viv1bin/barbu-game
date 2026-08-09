@@ -106,7 +106,7 @@ export class AuthServer extends DurableObject<Env> {
       `CREATE TABLE IF NOT EXISTS friend_requests (from_id TEXT NOT NULL, to_id TEXT NOT NULL, PRIMARY KEY (from_id, to_id))`,
     );
     this.sql.exec(
-      `CREATE TABLE IF NOT EXISTS saved_games (account_id TEXT PRIMARY KEY, state TEXT NOT NULL, updated_at TEXT NOT NULL)`,
+      `CREATE TABLE IF NOT EXISTS solo_saves (account_id TEXT NOT NULL, game_id TEXT NOT NULL, state TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (account_id, game_id))`,
     );
     this.sql.exec(`CREATE TABLE IF NOT EXISTS presence (account_id TEXT PRIMARY KEY, last_seen INTEGER NOT NULL)`);
     const sql = this.sql;
@@ -191,18 +191,24 @@ export class AuthServer extends DurableObject<Env> {
           row.totalPoints,
           row.bestScore,
         ),
-      savedGame: (id): SavedGame | undefined => {
-        const r = [...sql.exec('SELECT state, updated_at FROM saved_games WHERE account_id = ?', id)][0];
-        return r ? { state: JSON.parse(String(r.state)), updatedAt: String(r.updated_at) } : undefined;
+      listSavedGames: (accountId): SavedGame[] =>
+        [...sql.exec('SELECT game_id, state, updated_at FROM solo_saves WHERE account_id = ? ORDER BY updated_at DESC', accountId)].map(
+          (r) => ({ id: String(r.game_id), state: JSON.parse(String(r.state)), updatedAt: String(r.updated_at) }),
+        ),
+      getSavedGame: (accountId, gameId): SavedGame | undefined => {
+        const r = [...sql.exec('SELECT game_id, state, updated_at FROM solo_saves WHERE account_id = ? AND game_id = ?', accountId, gameId)][0];
+        return r ? { id: String(r.game_id), state: JSON.parse(String(r.state)), updatedAt: String(r.updated_at) } : undefined;
       },
-      putSavedGame: (id, state) =>
+      putSavedGame: (accountId, gameId, state) =>
         void sql.exec(
-          'INSERT OR REPLACE INTO saved_games (account_id, state, updated_at) VALUES (?, ?, ?)',
-          id,
+          'INSERT OR REPLACE INTO solo_saves (account_id, game_id, state, updated_at) VALUES (?, ?, ?, ?)',
+          accountId,
+          gameId,
           JSON.stringify(state ?? null),
           new Date().toISOString(),
         ),
-      deleteSavedGame: (id) => void sql.exec('DELETE FROM saved_games WHERE account_id = ?', id),
+      deleteSavedGame: (accountId, gameId) =>
+        void sql.exec('DELETE FROM solo_saves WHERE account_id = ? AND game_id = ?', accountId, gameId),
       touchPresence: (id) => void sql.exec('INSERT OR REPLACE INTO presence (account_id, last_seen) VALUES (?, ?)', id, Date.now()),
       presence: (id) => {
         const r = [...sql.exec('SELECT last_seen FROM presence WHERE account_id = ?', id)][0];
@@ -265,12 +271,12 @@ export class AuthServer extends DurableObject<Env> {
         return json(this.social.removeFriend(id, body.id));
       case 'POST /social/ping':
         return json({ ok: true });
-      case 'GET /social/game':
-        return json({ save: this.social.loadGame(id) });
+      case 'GET /social/games':
+        return json({ saves: this.social.listGames(id) });
       case 'POST /social/game':
-        return json(this.social.saveGame(id, body.state));
+        return json(this.social.saveGame(id, body.id, body.state));
       case 'POST /social/game/delete':
-        return json(this.social.deleteGame(id));
+        return json(this.social.deleteGame(id, body.id));
       default:
         return json({ error: 'Route inconnue.' }, 404);
     }

@@ -16,6 +16,8 @@ const SCREEN_TO_TAB: Partial<Record<Screen, Tab>> = { menu: 'home', social: 'fri
 export function App() {
   const auth = useAuth();
   const [screen, setScreen] = useState<Screen>('menu');
+  // Id de partie solo à reprendre directement (déclenché depuis les réglages).
+  const [soloResume, setSoloResume] = useState<string | null>(null);
   const back = () => setScreen('menu');
   // Présence globale : on est « en ligne » pour nos amis tant que l'app est ouverte.
   usePresence(auth.token);
@@ -33,9 +35,25 @@ export function App() {
   if (!auth.account) return <AuthScreen auth={auth} />;
 
   // Écrans plein écran (hors coquille).
-  if (screen === 'solo') return <SoloScreen onBack={back} token={auth.token} />;
+  if (screen === 'solo') {
+    return (
+      <SoloScreen
+        onBack={() => { setSoloResume(null); back(); }}
+        token={auth.token}
+        initialResumeId={soloResume}
+      />
+    );
+  }
   if (screen === 'online') return <OnlineScreen onBack={back} account={auth.account} />;
-  if (screen === 'settings') return <SettingsScreen onBack={back} auth={auth} />;
+  if (screen === 'settings') {
+    return (
+      <SettingsScreen
+        onBack={back}
+        auth={auth}
+        onResumeGame={(id) => { setSoloResume(id); setScreen('solo'); }}
+      />
+    );
+  }
 
   // Hub à onglets : accueil / amis / règles.
   const tab = SCREEN_TO_TAB[screen] ?? 'home';

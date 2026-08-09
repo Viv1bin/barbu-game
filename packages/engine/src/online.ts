@@ -54,6 +54,8 @@ export interface SocialSnapshot {
 
 /** Sauvegarde d'une partie solo liée au compte (reprise ultérieure). */
 export interface SavedGame {
+  /** Identifiant de la partie (généré par le client, stable sur toute sa durée). */
+  id: string;
   /** Blob d'état opaque (sérialisé par le client solo). */
   state: unknown;
   updatedAt: string;

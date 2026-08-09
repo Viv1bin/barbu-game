@@ -8,7 +8,7 @@ class MemoryDB implements SocialDB {
   friends = new Set<string>(); // clés "a|b" dans les deux sens
   requests = new Set<string>(); // clés "from|to"
   statsRows = new Map<string, StatsRow>();
-  saves = new Map<string, SavedGame>();
+  saves = new Map<string, Map<string, SavedGame>>(); // accountId -> gameId -> save
   seen = new Map<string, number>();
 
   add(id: string, pseudo: string, avatar = '🙂') {
@@ -55,14 +55,19 @@ class MemoryDB implements SocialDB {
   saveStats(row: StatsRow) {
     this.statsRows.set(row.accountId, row);
   }
-  savedGame(id: string) {
-    return this.saves.get(id);
+  listSavedGames(accountId: string) {
+    return [...(this.saves.get(accountId)?.values() ?? [])].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
-  putSavedGame(id: string, state: unknown) {
-    this.saves.set(id, { state, updatedAt: new Date().toISOString() });
+  getSavedGame(accountId: string, gameId: string) {
+    return this.saves.get(accountId)?.get(gameId);
   }
-  deleteSavedGame(id: string) {
-    this.saves.delete(id);
+  putSavedGame(accountId: string, gameId: string, state: unknown) {
+    const slot = this.saves.get(accountId) ?? new Map<string, SavedGame>();
+    slot.set(gameId, { id: gameId, state, updatedAt: new Date().toISOString() });
+    this.saves.set(accountId, slot);
+  }
+  deleteSavedGame(accountId: string, gameId: string) {
+    this.saves.get(accountId)?.delete(gameId);
   }
   touchPresence(id: string) {
     this.seen.set(id, this.clock);
@@ -173,13 +178,30 @@ describe('stats en ligne', () => {
   });
 });
 
-describe('sauvegarde solo', () => {
-  it('sauver, recharger, supprimer', () => {
+describe('sauvegarde solo (multi-parties)', () => {
+  it('sauver, recharger, supprimer une partie ciblée', () => {
     const { social } = setup();
-    expect(social.loadGame('a')).toBeNull();
-    social.saveGame('a', { manche: 3, seed: 42 });
-    expect(social.loadGame('a')?.state).toEqual({ manche: 3, seed: 42 });
-    social.deleteGame('a');
-    expect(social.loadGame('a')).toBeNull();
+    expect(social.loadGame('a', 'g1')).toBeNull();
+    social.saveGame('a', 'g1', { manche: 3, seed: 42 });
+    expect(social.loadGame('a', 'g1')?.state).toEqual({ manche: 3, seed: 42 });
+    social.deleteGame('a', 'g1');
+    expect(social.loadGame('a', 'g1')).toBeNull();
+  });
+
+  it('liste plusieurs parties du compte, isolées par compte', () => {
+    const { social } = setup();
+    social.saveGame('a', 'g1', { manche: 1 });
+    social.saveGame('a', 'g2', { manche: 5 });
+    social.saveGame('b', 'g3', { manche: 2 });
+    expect(social.listGames('a').map((s) => s.id).sort()).toEqual(['g1', 'g2']);
+    expect(social.listGames('b').map((s) => s.id)).toEqual(['g3']);
+    social.deleteGame('a', 'g1');
+    expect(social.listGames('a').map((s) => s.id)).toEqual(['g2']);
+  });
+
+  it('rejette un identifiant de partie invalide', () => {
+    const { social } = setup();
+    expect(() => social.saveGame('a', '', { x: 1 })).toThrow(SocialError);
+    expect(() => social.saveGame('a', 123, { x: 1 })).toThrow(SocialError);
   });
 });
