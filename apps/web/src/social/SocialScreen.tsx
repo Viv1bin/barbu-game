@@ -4,16 +4,15 @@ import { ApiError, useSocial } from './useSocial.js';
 
 type Tab = 'friends' | 'ranking' | 'stats';
 
-/** Écran « Amis & stats » : gestion des amis, classement, statistiques perso. */
-export function SocialScreen({ onBack, token, me }: { onBack: () => void; token: string | null; me: Account }) {
+/** Onglet « Amis » : amis, classement, statistiques perso (dans la coquille). */
+export function SocialScreen({ token, me }: { token: string | null; me: Account }) {
   const social = useSocial(token);
   const [tab, setTab] = useState<Tab>('friends');
 
   return (
-    <div className="app">
-      <div className="topbar">
-        <button className="ghost" onClick={onBack}>← Menu</button>
-        <h1>Amis &amp; stats</h1>
+    <div className="hub">
+      <div className="hubhead">
+        <h2>Amis</h2>
       </div>
 
       <div className="tabs socialtabs">
@@ -136,10 +135,12 @@ function RequestRow({ req, children }: { req: FriendRequestInfo; children: React
 function FriendRow({ friend, onRemove }: { friend: FriendInfo; onRemove: () => void }) {
   return (
     <div className="friendrow">
-      <span className={`dot ${friend.online ? 'online' : ''}`} title={friend.online ? 'En ligne' : 'Hors ligne'} />
       <span className="avatar">{friend.avatar}</span>
       <span className="frname">{friend.pseudo}</span>
-      <span className="frstat muted">{friend.stats.wins}V · {friend.stats.games}pj</span>
+      <span className={`frstat ${friend.online ? 'on' : ''}`}>
+        <span className={`dot ${friend.online ? 'online' : ''}`} />
+        {friend.online ? 'en ligne' : 'hors ligne'}
+      </span>
       <span className="fractions">
         <button className="ghost tiny" onClick={onRemove} title="Retirer cet ami">Retirer</button>
       </span>
