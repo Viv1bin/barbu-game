@@ -174,6 +174,26 @@ describe('amis', () => {
   });
 });
 
+describe('fiche publique', () => {
+  it('renvoie profil, stats et lien d’amitié ; 404 sur un inconnu', () => {
+    const { social } = setup();
+    social.recordGame('m1', [
+      { accountId: 'b', score: 30 },
+      { accountId: 'c', score: 90 },
+    ]);
+    // Alice consulte Bob, croisé en partie : elle voit ses stats sans être son amie.
+    expect(social.publicProfile('a', 'b')).toEqual({
+      profile: { id: 'b', pseudo: 'Bob', avatar: '🙂' },
+      stats: { games: 1, wins: 1, totalPoints: 30, bestScore: 30 },
+      friend: false,
+    });
+    social.sendRequest('a', 'Bob');
+    social.respondRequest('b', 'a', true);
+    expect(social.publicProfile('a', 'b').friend).toBe(true);
+    expect(() => social.publicProfile('a', 'zzz')).toThrow(SocialError);
+  });
+});
+
 describe('présence', () => {
   it('en ligne dans la fenêtre, hors ligne au-delà', () => {
     const { db, social } = setup();

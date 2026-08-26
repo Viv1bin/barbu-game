@@ -101,6 +101,11 @@ export interface RedactedMatchState extends MatchState {
 export interface SeatInfo {
   seat: PlayerId;
   kind: 'human' | 'bot' | 'open';
+  /**
+   * Compte titulaire du siège (humains seulement) : permet d'ouvrir la fiche
+   * d'un joueur depuis la table. Reste renseigné pendant une absence.
+   */
+  profileId?: string;
   /** Nom affiché (humain : profil ; bot : libellé). */
   name?: string;
   avatar?: string;

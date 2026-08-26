@@ -219,6 +219,22 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 }
 .modecard:not(.disabled):hover { border-color: var(--accent); background: var(--surface); }
 .modecard.disabled { opacity: .45; cursor: default; }
+
+/* Reprise d'une partie en ligne quittée en route : sous les modes de jeu, un
+   bouton par salle encore ouverte (l'onglet Amis ne garde que les parties finies). */
+.resumepanel { width: 100%; }
+.resumerow {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 0; border-top: 1px solid var(--border);
+}
+.resumerow:first-of-type { border-top: none; }
+.resumewho { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; }
+.resumerow button { margin-left: auto; }
+
+/* Avatar cliquable (salon) : bouton nu, l'avatar garde son rendu. */
+.avatartap { padding: 0; border: 0; background: none; border-radius: 999px; cursor: pointer; }
+
+.profile-modal { max-width: 420px; align-items: stretch; }
 .micon {
   width: 40px; height: 40px; border-radius: var(--r-md);
   display: flex; align-items: center; justify-content: center;
@@ -385,6 +401,15 @@ footer { border-top: 1px solid var(--border); padding-top: 10px; }
 .sscore { font-size: 1.05rem; font-weight: 700; }
 .scards { font-size: .74rem; color: var(--muted); }
 .scards b { font-size: .95rem; font-weight: 700; color: var(--text); }
+/* Ouvre la fiche du joueur : couche transparente au-dessus de la plaque, hors
+   flux — le siège garde exactement sa taille (la table est serrée sur mobile). */
+.seattap {
+  position: absolute; inset: 0; z-index: 1;
+  padding: 0; margin: 0; border: 0; background: none; border-radius: var(--r-md);
+  cursor: pointer;
+}
+.seattap:hover { background: var(--accent-soft); }
+.ctag, .gonetag { z-index: 2; }
 .ctag {
   position: absolute; top: -8px; right: -8px; font-size: .6rem; background: var(--accent);
   color: var(--accent-ink); padding: 1px 6px; border-radius: var(--r-sm);
@@ -686,10 +711,6 @@ footer { border-top: 1px solid var(--border); padding-top: 10px; }
 .mr-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .mr-when { font-size: .82rem; color: var(--muted); }
 .mr-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .78rem; color: var(--muted); }
-.mr-live {
-  font-size: .72rem; font-weight: 650; text-transform: uppercase; letter-spacing: .04em;
-  color: var(--success); background: var(--success-soft); border-radius: 999px; padding: 2px 8px;
-}
 .mr-head button { margin-left: auto; }
 .mr-players { display: flex; flex-wrap: wrap; gap: 6px; }
 .mr-p {

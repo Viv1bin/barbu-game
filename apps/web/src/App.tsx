@@ -31,6 +31,10 @@ export function App() {
   // Salle en ligne à rejoindre d'emblée (depuis l'historique des parties).
   const [joinRoom, setJoinRoom] = useState<string | null>(null);
   const back = () => setScreen('menu');
+  const joinRoomCode = (code: string) => {
+    setJoinRoom(code);
+    setScreen('online');
+  };
   // Présence globale : on est « en ligne » pour nos amis tant que l'app est ouverte.
   usePresence(auth.token);
 
@@ -77,15 +81,11 @@ export function App() {
           onResumeGame={(id) => { setSoloResume(id); setScreen('solo'); }}
         />
       ) : screen === 'social' ? (
-        <SocialScreen
-          token={auth.token}
-          me={auth.account}
-          onJoinRoom={(code) => { setJoinRoom(code); setScreen('online'); }}
-        />
+        <SocialScreen token={auth.token} me={auth.account} />
       ) : screen === 'rules' ? (
         <RulesScreen />
       ) : (
-        <Menu onPick={setScreen} auth={auth} />
+        <Menu onPick={setScreen} auth={auth} onJoinRoom={joinRoomCode} />
       )}
     </AppShell>
   );

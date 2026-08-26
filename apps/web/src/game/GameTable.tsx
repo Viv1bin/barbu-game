@@ -51,6 +51,8 @@ export interface SeatLabel {
   name: string;
   avatar: string;
   bot: boolean;
+  /** Compte du joueur (en ligne, humains seulement) : ouvre sa fiche au clic. */
+  profileId?: string;
 }
 
 export interface TableActions {
@@ -106,6 +108,8 @@ export interface TableView {
   onNewGame?: () => void;
   /** Contrôles de salle (mode en ligne uniquement ; absent en solo). */
   room?: RoomControl;
+  /** Ouvre la fiche d'un joueur (en ligne). Absent → les sièges ne sont pas cliquables. */
+  onShowProfile?: (profileId: string) => void;
 }
 
 const SUIT_ORDER: Suit[] = ['S', 'H', 'C', 'D'];
@@ -403,6 +407,16 @@ function PokerTable({ view }: { view: TableView }) {
           key={p}
           className={`seat ${SEAT_CLASS[pos(p)]} ${activeSeat === p ? 'active' : ''} ${p === state.dealer ? 'dealer' : ''} ${pause?.winner === p ? 'won' : ''}`}
         >
+          {/* Zone cliquable posée par-dessus la plaque plutôt qu'un bouton
+              autour du contenu : la fiche s'ouvre au clic sans que le siège
+              change d'un pixel (la table est déjà juste sur mobile). */}
+          {view.onShowProfile && seat.profileId && (
+            <button
+              className="seattap"
+              aria-label={`Profil de ${seat.name}`}
+              onClick={() => view.onShowProfile!(seat.profileId!)}
+            />
+          )}
           <Avatar name={seat.avatar} />
           <div className="sinfo">
             <div className="sname">{seat.name}{p === state.dealer && <Icon name="crown" size={13} className="dealermark" />}</div>

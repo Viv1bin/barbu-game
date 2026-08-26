@@ -197,6 +197,21 @@ export class SocialLogic {
     return this.statsFor(id);
   }
 
+  /**
+   * Fiche publique d'un autre compte : profil, stats et lien d'amitié. Rien de
+   * privé n'en sort (ni e-mail ni présence fine), c'est la même information que
+   * le classement — on l'ouvre depuis la table pour voir contre qui on joue.
+   */
+  publicProfile(viewerId: string, otherId: unknown): { profile: PublicProfile; stats: PlayerStats; friend: boolean } {
+    const target = this.db.findById(String(otherId ?? ''));
+    if (!target) throw new SocialError('Joueur introuvable.', 404);
+    return {
+      profile: target,
+      stats: this.statsFor(target.id),
+      friend: target.id !== viewerId && this.db.areFriends(viewerId, target.id),
+    };
+  }
+
   // -- Sauvegardes solo (plusieurs parties par compte) ----------------------
 
   /** Liste des parties solo en cours du compte (plus récente d'abord). */
