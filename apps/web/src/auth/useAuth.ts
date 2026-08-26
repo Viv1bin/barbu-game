@@ -15,6 +15,8 @@ export interface Auth {
   login: (pseudo: string, password: string) => Promise<void>;
   logout: () => void;
   updateProfile: (patch: { pseudo?: string; avatar?: string }) => Promise<void>;
+  /** Change le mot de passe ; toutes les autres sessions sont révoquées. */
+  changePassword: (current: string, next: string) => Promise<void>;
 }
 
 function loadToken(): string | null {
@@ -96,7 +98,14 @@ export function useAuth(): Auth {
     [token],
   );
 
-  return { account, token, loading, register, login, logout, updateProfile };
+  const changePassword = useCallback(
+    async (current: string, next: string) => {
+      await apiFetch<{ ok: true }>('/auth/password', { token, body: { current, next } });
+    },
+    [token],
+  );
+
+  return { account, token, loading, register, login, logout, updateProfile, changePassword };
 }
 
 export { ApiError };

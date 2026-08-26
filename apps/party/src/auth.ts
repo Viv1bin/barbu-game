@@ -1,9 +1,13 @@
 // Logique de comptes, agnostique du runtime (comme core.ts pour le jeu).
 // Ne dépend que de WebCrypto (présent en Workers ET en Node) et d'une abstraction
 // de stockage `AuthDB` → testable sans Durable Object.
+import { DEFAULT_AVATAR, isValidAvatar, MIN_PASSWORD_LENGTH } from '@barbu/engine';
 import type { Account, AuthResponse } from '@barbu/engine';
 
 const PBKDF2_ITERATIONS = 100_000;
+
+/** Durée de vie d'une session. Au-delà, le token est refusé et purgé. */
+export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 jours
 
 // --- Modèle de stockage --------------------------------------------------
 
@@ -22,6 +26,8 @@ export interface SessionRow {
   token: string;
   accountId: string;
   createdAt: string;
+  /** Instant d'expiration (epoch ms). Une session échue vaut session absente. */
+  expiresAt: number;
 }
 
 /** Abstraction minimale de persistance. Impl SQLite (DO) ou en mémoire (tests). */
@@ -33,6 +39,10 @@ export interface AuthDB {
   insertSession(row: SessionRow): void;
   findSession(token: string): SessionRow | undefined;
   deleteSession(token: string): void;
+  /** Purge les sessions échues à l'instant `now` (epoch ms). */
+  deleteExpiredSessions(now: number): void;
+  /** Révoque toutes les sessions d'un compte, sauf éventuellement `exceptToken`. */
+  deleteSessionsForAccount(accountId: string, exceptToken?: string): void;
 }
 
 /** Erreur métier : message affichable côté client + code HTTP. */
@@ -45,6 +55,58 @@ export class AuthError extends Error {
     this.name = 'AuthError';
   }
 }
+
+// --- Limitation de débit --------------------------------------------------
+
+/**
+ * Compteur de tentatives à fenêtre fixe, en mémoire du Durable Object.
+ *
+ * En mémoire volontairement : écrire en SQLite à chaque tentative ferait du
+ * limiteur lui-même un vecteur d'abus. Le DO des comptes est unique et
+ * long-vivant, donc le compteur couvre l'essentiel ; une éviction du DO remet
+ * les compteurs à zéro, ce qui reste acceptable face à un bruteforce soutenu.
+ */
+export class RateLimiter {
+  private hits = new Map<string, { count: number; resetAt: number }>();
+
+  constructor(private now: () => number = () => Date.now()) {}
+
+  /** Consomme une tentative pour `key`. Jette une AuthError 429 au-delà de `max`. */
+  consume(key: string, max: number, windowMs: number, message: string): void {
+    const t = this.now();
+    this.prune(t);
+    const cur = this.hits.get(key);
+    if (!cur || cur.resetAt <= t) {
+      this.hits.set(key, { count: 1, resetAt: t + windowMs });
+      return;
+    }
+    cur.count++;
+    if (cur.count > max) throw new AuthError(message, 429);
+  }
+
+  /** Efface le compteur d'une clé (ex. connexion réussie). */
+  reset(key: string): void {
+    this.hits.delete(key);
+  }
+
+  /** Purge les fenêtres échues ; borne la mémoire si le flux d'attaque est large. */
+  private prune(t: number): void {
+    if (this.hits.size < 5000) return;
+    for (const [k, v] of this.hits) if (v.resetAt <= t) this.hits.delete(k);
+    // Toujours saturé (attaque avec des clés uniques) → on repart de zéro.
+    if (this.hits.size >= 5000) this.hits.clear();
+  }
+}
+
+/** Plafonds de tentatives. */
+const LIMITS = {
+  /** Échecs de connexion tolérés pour un même pseudo. */
+  loginPerPseudo: { max: 8, windowMs: 15 * 60_000 },
+  /** Tentatives de connexion tolérées depuis une même IP (succès compris). */
+  loginPerIp: { max: 40, windowMs: 15 * 60_000 },
+  /** Créations de compte tolérées depuis une même IP. */
+  registerPerIp: { max: 5, windowMs: 60 * 60_000 },
+};
 
 // --- Crypto --------------------------------------------------------------
 
@@ -102,9 +164,16 @@ function normalizePseudo(raw: unknown): string {
   return pseudo;
 }
 
+/**
+ * Valide un mot de passe **nouvellement choisi** (inscription, changement).
+ * La connexion ne passe pas par ici : les comptes créés sous l'ancien minimum
+ * de 4 caractères restent utilisables jusqu'à ce que leur porteur en change.
+ */
 function checkPassword(raw: unknown): string {
   const pw = typeof raw === 'string' ? raw : '';
-  if (pw.length < 4) throw new AuthError('Le mot de passe doit faire au moins 4 caractères.');
+  if (pw.length < MIN_PASSWORD_LENGTH) {
+    throw new AuthError(`Le mot de passe doit faire au moins ${MIN_PASSWORD_LENGTH} caractères.`);
+  }
   return pw;
 }
 
@@ -119,12 +188,30 @@ function toAccount(row: AccountRow): Account {
 // --- Logique métier ------------------------------------------------------
 
 export class AuthLogic {
-  constructor(private db: AuthDB) {}
+  private limiter: RateLimiter;
 
-  async register(input: { pseudo?: unknown; password?: unknown; avatar?: unknown }): Promise<AuthResponse> {
+  constructor(
+    private db: AuthDB,
+    private now: () => number = () => Date.now(),
+  ) {
+    this.limiter = new RateLimiter(now);
+  }
+
+  async register(
+    input: { pseudo?: unknown; password?: unknown; avatar?: unknown },
+    ip = 'inconnue',
+  ): Promise<AuthResponse> {
+    this.limiter.consume(
+      `reg:${ip}`,
+      LIMITS.registerPerIp.max,
+      LIMITS.registerPerIp.windowMs,
+      'Trop de comptes créés depuis cette connexion. Réessaie dans une heure.',
+    );
     const pseudo = normalizePseudo(input.pseudo);
     const password = checkPassword(input.password);
-    const avatar = typeof input.avatar === 'string' && input.avatar ? input.avatar : '🙂';
+    // Avatar restreint à la liste connue : sinon le champ accepte une chaîne
+    // arbitraire, stockée puis rediffusée à tous les joueurs de la table.
+    const avatar = isValidAvatar(input.avatar) ? input.avatar : DEFAULT_AVATAR;
     const pseudoLower = pseudo.toLowerCase();
     if (this.db.findByPseudoLower(pseudoLower)) {
       throw new AuthError('Ce pseudo est déjà pris.', 409);
@@ -144,15 +231,32 @@ export class AuthLogic {
     return { token: this.openSession(row.id), account: toAccount(row) };
   }
 
-  async login(input: { pseudo?: unknown; password?: unknown }): Promise<AuthResponse> {
+  async login(input: { pseudo?: unknown; password?: unknown }, ip = 'inconnue'): Promise<AuthResponse> {
     const pseudo = typeof input.pseudo === 'string' ? input.pseudo.trim() : '';
     const password = typeof input.password === 'string' ? input.password : '';
-    const row = this.db.findByPseudoLower(pseudo.toLowerCase());
+    const pseudoLower = pseudo.toLowerCase();
+
+    // Deux garde-fous : l'un cible le bruteforce d'un compte précis, l'autre le
+    // balayage de nombreux comptes depuis une même origine. Consommés *avant* le
+    // PBKDF2, qui est justement l'opération coûteuse qu'on protège.
+    this.limiter.consume(
+      `login-ip:${ip}`,
+      LIMITS.loginPerIp.max,
+      LIMITS.loginPerIp.windowMs,
+      'Trop de tentatives depuis cette connexion. Réessaie dans quelques minutes.',
+    );
+    const pseudoKey = `login:${pseudoLower}`;
+    const tooMany = 'Trop de tentatives sur ce compte. Réessaie dans quelques minutes.';
+    this.limiter.consume(pseudoKey, LIMITS.loginPerPseudo.max, LIMITS.loginPerPseudo.windowMs, tooMany);
+
+    const row = this.db.findByPseudoLower(pseudoLower);
     // Message générique (ne révèle pas si le pseudo existe).
     const fail = () => new AuthError('Pseudo ou mot de passe incorrect.', 401);
     if (!row) throw fail();
     const hash = await hashPassword(password, row.salt);
     if (!constantTimeEqual(hash, row.hash)) throw fail();
+    // Succès : le compteur du pseudo repart à zéro (seuls les échecs comptent).
+    this.limiter.reset(pseudoKey);
     return { token: this.openSession(row.id), account: toAccount(row) };
   }
 
@@ -173,11 +277,48 @@ export class AuthLogic {
       if (clash && clash.id !== row.id) throw new AuthError('Ce pseudo est déjà pris.', 409);
       next = { ...next, pseudo, pseudoLower };
     }
-    if (patch.avatar !== undefined && typeof patch.avatar === 'string' && patch.avatar) {
+    if (patch.avatar !== undefined) {
+      if (!isValidAvatar(patch.avatar)) throw new AuthError('Avatar inconnu.');
       next = { ...next, avatar: patch.avatar };
     }
     this.db.updateAccount(next);
     return toAccount(next);
+  }
+
+  /**
+   * Change le mot de passe après vérification de l'actuel, puis **révoque toutes
+   * les autres sessions** : c'est ce qui rend un token volé récupérable.
+   */
+  async changePassword(
+    token: string | null,
+    input: { current?: unknown; next?: unknown },
+    ip = 'inconnue',
+  ): Promise<{ ok: true }> {
+    const row = this.rowForToken(token);
+    if (!row) throw new AuthError('Session expirée.', 401);
+
+    // Même protection que le login : le mot de passe actuel est vérifiable ici.
+    this.limiter.consume(
+      `pw:${row.id}:${ip}`,
+      LIMITS.loginPerPseudo.max,
+      LIMITS.loginPerPseudo.windowMs,
+      'Trop de tentatives. Réessaie dans quelques minutes.',
+    );
+
+    const current = typeof input.current === 'string' ? input.current : '';
+    const currentHash = await hashPassword(current, row.salt);
+    if (!constantTimeEqual(currentHash, row.hash)) {
+      throw new AuthError('Mot de passe actuel incorrect.', 401);
+    }
+    const next = checkPassword(input.next);
+    if (next === current) throw new AuthError('Le nouveau mot de passe doit être différent.');
+
+    const salt = randomSalt();
+    const hash = await hashPassword(next, salt);
+    this.db.updateAccount({ ...row, salt, hash });
+    this.db.deleteSessionsForAccount(row.id, token ?? undefined);
+    this.limiter.reset(`pw:${row.id}:${ip}`);
+    return { ok: true };
   }
 
   logout(token: string | null): void {
@@ -186,7 +327,15 @@ export class AuthLogic {
 
   private openSession(accountId: string): string {
     const token = randomToken();
-    this.db.insertSession({ token, accountId, createdAt: new Date().toISOString() });
+    const t = this.now();
+    this.db.insertSession({
+      token,
+      accountId,
+      createdAt: new Date(t).toISOString(),
+      expiresAt: t + SESSION_TTL_MS,
+    });
+    // Bon moment pour balayer les sessions échues : rare et borné.
+    this.db.deleteExpiredSessions(t);
     return token;
   }
 
@@ -194,6 +343,10 @@ export class AuthLogic {
     if (!token) return undefined;
     const session = this.db.findSession(token);
     if (!session) return undefined;
+    if (session.expiresAt <= this.now()) {
+      this.db.deleteSession(token); // échue → on la retire au passage
+      return undefined;
+    }
     return this.db.findById(session.accountId);
   }
 }

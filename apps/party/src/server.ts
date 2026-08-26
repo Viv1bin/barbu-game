@@ -1,9 +1,13 @@
 import { DurableObject } from 'cloudflare:workers';
 import { Server, routePartykitRequest, type Connection, type WSMessage } from 'partyserver';
-import type { GameResultEntry, PublicProfile, SavedGame } from '@barbu/engine';
+import { isValidRoomCode } from '@barbu/engine';
+import type { Account, GameResultEntry, PublicProfile, SavedGame } from '@barbu/engine';
 import { GameRoom, type Conn } from './core.js';
 import { AuthLogic, AuthError, bearerToken, type AccountRow, type AuthDB, type SessionRow } from './auth.js';
-import { SocialLogic, SocialError, type SocialDB, type StatsRow } from './social.js';
+import { SocialLogic, SocialError, MAX_SAVED_GAME_BYTES, type SocialDB, type StatsRow } from './social.js';
+
+/** Plafond du corps des requêtes JSON (sauvegarde de partie + marge d'encodage). */
+const MAX_BODY_BYTES = MAX_SAVED_GAME_BYTES * 2;
 
 // Réexporté pour les tests (délais d'animation mutables).
 export { TIMING } from './core.js';
@@ -31,6 +35,16 @@ export class BarbuServer extends Server<Env> {
         return server.name;
       },
       getConnections: () => server.getConnections() as Iterable<Conn>,
+      // Identité du joueur : résolue par le registre de comptes, pas déclarée
+      // par le client. Un token invalide → aucun siège.
+      resolveAccount: async (token) => {
+        const stub = env.Auth.get(env.Auth.idFromName('global'));
+        try {
+          return await stub.accountForToken(token);
+        } catch {
+          return null; // registre injoignable → on refuse plutôt que d'ouvrir
+        }
+      },
       // Fin de partie en ligne → agrège les stats des comptes dans le DO global.
       reportResult: (entries) => {
         const stub = env.Auth.get(env.Auth.idFromName('global'));
@@ -91,9 +105,19 @@ export class AuthServer extends DurableObject<Env> {
     );
     this.sql.exec(
       `CREATE TABLE IF NOT EXISTS sessions (
-        token TEXT PRIMARY KEY, account_id TEXT NOT NULL, created_at TEXT NOT NULL
+        token TEXT PRIMARY KEY, account_id TEXT NOT NULL, created_at TEXT NOT NULL,
+        expires_at INTEGER NOT NULL
       )`,
     );
+    // Migration : les bases créées avant l'ajout de l'expiration n'ont pas la
+    // colonne. On l'ajoute, et les sessions préexistantes (expires_at NULL) sont
+    // traitées comme échues — ces tokens sont antérieurs au durcissement, on les
+    // invalide volontairement.
+    try {
+      this.sql.exec('ALTER TABLE sessions ADD COLUMN expires_at INTEGER');
+    } catch {
+      /* colonne déjà présente */
+    }
     // Tables sociales (amis, stats en ligne, présence, sauvegarde solo).
     this.sql.exec(
       `CREATE TABLE IF NOT EXISTS stats (
@@ -135,12 +159,33 @@ export class AuthServer extends DurableObject<Env> {
           r.id,
         ),
       insertSession: (r) =>
-        void sql.exec('INSERT INTO sessions (token, account_id, created_at) VALUES (?, ?, ?)', r.token, r.accountId, r.createdAt),
+        void sql.exec(
+          'INSERT INTO sessions (token, account_id, created_at, expires_at) VALUES (?, ?, ?, ?)',
+          r.token,
+          r.accountId,
+          r.createdAt,
+          r.expiresAt,
+        ),
       findSession: (token) => {
         const row = [...sql.exec('SELECT * FROM sessions WHERE token = ?', token)][0];
-        return row ? ({ token: String(row.token), accountId: String(row.account_id), createdAt: String(row.created_at) } as SessionRow) : undefined;
+        if (!row) return undefined;
+        return {
+          token: String(row.token),
+          accountId: String(row.account_id),
+          createdAt: String(row.created_at),
+          // expires_at NULL = session d'avant la migration → échue.
+          expiresAt: row.expires_at == null ? 0 : Number(row.expires_at),
+        } satisfies SessionRow;
       },
       deleteSession: (token) => void sql.exec('DELETE FROM sessions WHERE token = ?', token),
+      deleteExpiredSessions: (now) =>
+        void sql.exec('DELETE FROM sessions WHERE expires_at IS NULL OR expires_at <= ?', now),
+      deleteSessionsForAccount: (accountId, exceptToken) =>
+        void sql.exec(
+          'DELETE FROM sessions WHERE account_id = ? AND token IS NOT ?',
+          accountId,
+          exceptToken ?? null,
+        ),
     };
     this.logic = new AuthLogic(db);
 
@@ -223,21 +268,47 @@ export class AuthServer extends DurableObject<Env> {
     this.social.recordGame(entries);
   }
 
+  /**
+   * Résout un token de session en compte, pour les salles de jeu (RPC interne).
+   * C'est ce qui permet au WebSocket d'avoir une identité prouvée.
+   */
+  accountForToken(token: string): Account | null {
+    return this.logic.me(token);
+  }
+
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const token = bearerToken(request.headers.get('Authorization'));
+    // IP réelle du client (en-tête posé par Cloudflare, non falsifiable ici).
+    const ip = request.headers.get('CF-Connecting-IP') ?? 'inconnue';
     try {
-      const body = request.method === 'POST' ? ((await request.json().catch(() => ({}))) as Record<string, unknown>) : {};
+      // Borne dure avant toute lecture : la plus grosse charge légitime est une
+      // sauvegarde de partie (64 Ko), on laisse une marge et on refuse le reste.
+      const declared = Number(request.headers.get('Content-Length') ?? 0);
+      if (declared > MAX_BODY_BYTES) return json({ error: 'Requête trop volumineuse.' }, 413);
+      let body: Record<string, unknown> = {};
+      if (request.method === 'POST') {
+        // Content-Length peut manquer (chunked) : on revérifie après lecture.
+        const raw = await request.text();
+        if (raw.length > MAX_BODY_BYTES) return json({ error: 'Requête trop volumineuse.' }, 413);
+        try {
+          body = (JSON.parse(raw || '{}') ?? {}) as Record<string, unknown>;
+        } catch {
+          body = {};
+        }
+      }
       if (url.pathname.startsWith('/social/')) return this.handleSocial(url.pathname, request.method, token, body);
       switch (url.pathname) {
         case '/auth/register':
-          return json(await this.logic.register(body));
+          return json(await this.logic.register(body, ip));
         case '/auth/login':
-          return json(await this.logic.login(body));
+          return json(await this.logic.login(body, ip));
         case '/auth/me':
           return json({ account: this.logic.me(token) });
         case '/auth/profile':
           return json({ account: await this.logic.updateProfile(token, body) });
+        case '/auth/password':
+          return json(await this.logic.changePassword(token, body, ip));
         case '/auth/logout':
           this.logic.logout(token);
           return json({ ok: true });
@@ -302,6 +373,15 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
+/**
+ * Extrait le code de salle d'une URL partyserver (`/parties/<namespace>/<code>`),
+ * ou null si le chemin ne désigne pas une salle.
+ */
+function roomCodeOf(pathname: string): string | null {
+  const m = /^\/parties\/[^/]+\/([^/?]+)/.exec(pathname);
+  return m ? decodeURIComponent(m[1]!) : null;
+}
+
 /** Point d'entrée Worker : /auth/* et /social/* → comptes, sinon /parties/main/:code → salle. */
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -310,6 +390,13 @@ export default {
     if (url.pathname.startsWith('/auth/') || url.pathname.startsWith('/social/')) {
       const stub = env.Auth.get(env.Auth.idFromName('global'));
       return stub.fetch(request);
+    }
+    // Le code de salle est le seul secret qui protège une partie : on refuse
+    // tout ce qui n'a pas la forme attendue, sinon des codes courts (donc
+    // énumérables) suffiraient à tomber sur des parties en cours.
+    const room = roomCodeOf(url.pathname);
+    if (room !== null && !isValidRoomCode(room)) {
+      return new Response('Code de salle invalide.', { status: 400 });
     }
     return (await routePartykitRequest(request, env)) ?? new Response('Not found', { status: 404 });
   },

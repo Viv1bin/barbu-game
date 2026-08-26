@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PublicProfile, SavedGame } from '@barbu/engine';
-import { SocialError, SocialLogic, type SocialDB, type StatsRow } from './social.js';
+import { MAX_SAVED_GAME_BYTES, SocialError, SocialLogic, type SocialDB, type StatsRow } from './social.js';
 
 // Implémentation en mémoire de SocialDB (miroir de la version SQLite du DO).
 class MemoryDB implements SocialDB {
@@ -203,5 +203,21 @@ describe('sauvegarde solo (multi-parties)', () => {
     const { social } = setup();
     expect(() => social.saveGame('a', '', { x: 1 })).toThrow(SocialError);
     expect(() => social.saveGame('a', 123, { x: 1 })).toThrow(SocialError);
+  });
+
+  it('refuse une sauvegarde hors gabarit', () => {
+    const { social } = setup();
+    // Au-delà du plafond : rejet, et rien n'est écrit.
+    const gros = { blob: 'x'.repeat(MAX_SAVED_GAME_BYTES + 1) };
+    expect(() => social.saveGame('a', 'g1', gros)).toThrow(SocialError);
+    expect(social.loadGame('a', 'g1')).toBeNull();
+
+    expect(() => social.saveGame('a', 'g1', null)).toThrow(SocialError);
+    expect(() => social.saveGame('a', 'g1', undefined)).toThrow(SocialError);
+
+    // Juste sous le plafond : accepté.
+    const ok = { blob: 'x'.repeat(MAX_SAVED_GAME_BYTES - 100) };
+    social.saveGame('a', 'g1', ok);
+    expect(social.loadGame('a', 'g1')?.state).toEqual(ok);
   });
 });

@@ -5,6 +5,7 @@ import {
   currentActor,
   redactState,
   trickWinner,
+  type Account,
   type Action,
   type ClientMsg,
   type Difficulty,
@@ -56,6 +57,12 @@ export interface Conn {
 export interface RoomHost {
   readonly id: string;
   getConnections(): Iterable<Conn>;
+  /**
+   * Résout un token de session en compte. **Seule** source d'identité de la
+   * salle : le client ne déclare jamais qui il est. Renvoie null si le token est
+   * absent, invalide ou expiré.
+   */
+  resolveAccount(token: string): Promise<Account | null>;
   /** Résultat d'une partie terminée (comptes humains + scores) → stats en ligne. */
   reportResult?(entries: GameResultEntry[]): void;
 }
@@ -122,22 +129,31 @@ export class GameRoom {
 
   // -- Lobby -----------------------------------------------------------------
 
-  private handleJoin(sender: Conn, msg: Extract<ClientMsg, { t: 'JOIN' }>) {
-    if (this.hostId === null) this.hostId = msg.profileId;
+  private async handleJoin(sender: Conn, msg: Extract<ClientMsg, { t: 'JOIN' }>) {
+    // Identité prouvée par le token, jamais déclarée : sans ça, n'importe qui
+    // pourrait se présenter avec l'id d'un autre et récupérer son siège (donc sa main).
+    const token = typeof msg.token === 'string' ? msg.token : '';
+    const account = token ? await this.room.resolveAccount(token) : null;
+    if (!account) return this.sendError(sender, 'Session expirée : reconnecte-toi.');
 
-    // Reconnexion : un siège porte déjà ce profil → on réattache la connexion.
-    const existing = this.seats.findIndex((s) => s.profileId === msg.profileId);
+    if (this.hostId === null) this.hostId = account.id;
+
+    // Reconnexion : un siège porte déjà ce compte → on réattache la connexion.
+    const existing = this.seats.findIndex((s) => s.profileId === account.id);
     if (existing >= 0) {
       this.seats[existing]!.connId = sender.id;
       this.seats[existing]!.kind = 'human';
+      // Le profil peut avoir changé entre-temps (pseudo / avatar).
+      this.seats[existing]!.name = account.pseudo;
+      this.seats[existing]!.avatar = account.avatar;
     } else if (!this.started) {
       const free = this.seats.findIndex((s) => s.kind === 'open');
       if (free >= 0) {
         this.seats[free] = {
           kind: 'human',
-          profileId: msg.profileId,
-          name: msg.name,
-          avatar: msg.avatar,
+          profileId: account.id,
+          name: account.pseudo,
+          avatar: account.avatar,
           level: DEFAULT_LEVEL,
           connId: sender.id,
         };

@@ -9,4 +9,6 @@ export * from './reussiteRound.js';
 export * from './bots.js';
 export * from './match.js';
 export * from './online.js';
+export * from './roomCode.js';
+export * from './profile.js';
 export * from './redact.js';

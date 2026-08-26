@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Card, Suit } from '@barbu/engine';
+import { MIN_PASSWORD_LENGTH, type Card, type Suit } from '@barbu/engine';
 import { AVATARS } from '../auth/avatars.js';
 import { ApiError, type Auth } from '../auth/useAuth.js';
 import { SUIT_RED, SUIT_SYMBOL } from '../format.js';
@@ -93,6 +93,8 @@ export function SettingsScreen({
 
         <MyGamesPanel token={auth.token} onResume={onResumeGame} />
 
+        <PasswordPanel auth={auth} />
+
         <div className="panel">
           <div className="danger-zone">
             <p>Se déconnecter de ce navigateur. Ton compte et tes données restent sur le serveur.</p>
@@ -177,6 +179,65 @@ function MyGamesPanel({ token, onResume }: { token: string | null; onResume: (id
         onDelete={games.remove}
         empty="Aucune partie solo sauvegardée."
       />
+    </div>
+  );
+}
+
+// --- Mot de passe ----------------------------------------------------------
+
+/** Changement de mot de passe : déconnecte les autres appareils. */
+function PasswordPanel({ auth }: { auth: Auth }) {
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const ready = current.length >= 1 && next.length >= MIN_PASSWORD_LENGTH && next === confirm;
+
+  const submit = async () => {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await auth.changePassword(current, next);
+      setCurrent('');
+      setNext('');
+      setConfirm('');
+      setNotice('Mot de passe changé. Les autres appareils ont été déconnectés.');
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Une erreur est survenue.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="panel">
+      <div className="panelhead">
+        <h3>Mot de passe</h3>
+      </div>
+
+      <div className="field">
+        <label>Mot de passe actuel</label>
+        <input type="password" value={current} autoComplete="current-password" onChange={(e) => setCurrent(e.target.value)} />
+      </div>
+      <div className="field">
+        <label>Nouveau mot de passe ({MIN_PASSWORD_LENGTH} caractères min.)</label>
+        <input type="password" value={next} autoComplete="new-password" onChange={(e) => setNext(e.target.value)} />
+      </div>
+      <div className="field">
+        <label>Confirmer</label>
+        <div className="inlinerow">
+          <input type="password" value={confirm} autoComplete="new-password" onChange={(e) => setConfirm(e.target.value)} />
+          <button disabled={!ready || busy} onClick={submit}>Changer</button>
+        </div>
+      </div>
+
+      {confirm.length > 0 && next !== confirm && <p className="errline">Les deux saisies diffèrent.</p>}
+      {error && <p className="errline">{error}</p>}
+      {notice && <p className="okline">{notice}</p>}
     </div>
   );
 }

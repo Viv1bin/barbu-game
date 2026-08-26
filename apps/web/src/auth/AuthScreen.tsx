@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { MIN_PASSWORD_LENGTH } from '@barbu/engine';
 import { AVATARS } from './avatars.js';
 import { ApiError, type Auth } from './useAuth.js';
 
@@ -13,7 +14,10 @@ export function AuthScreen({ auth }: { auth: Auth }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const ready = pseudo.trim().length >= 2 && password.length >= 4 && !busy;
+  // Le minimum ne s'applique qu'aux nouveaux mots de passe : les comptes créés
+  // avant le durcissement doivent pouvoir continuer à se connecter.
+  const minLength = mode === 'register' ? MIN_PASSWORD_LENGTH : 1;
+  const ready = pseudo.trim().length >= 2 && password.length >= minLength && !busy;
 
   const submit = async () => {
     if (!ready) return;
@@ -60,7 +64,8 @@ export function AuthScreen({ auth }: { auth: Auth }) {
           <input
             type="password"
             value={password}
-            placeholder="Mot de passe (4 caractères min.)"
+            placeholder={mode === 'register' ? `Mot de passe (${MIN_PASSWORD_LENGTH} caractères min.)` : 'Mot de passe'}
+            autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
             onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && submit()}
           />
