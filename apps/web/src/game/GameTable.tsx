@@ -214,9 +214,19 @@ function RoomBanner({ view, room }: { view: TableView; room: RoomControl }) {
           <Icon name="warning" size={16} />
           Partie suspendue — {room.absent.map(name).join(', ')} {room.absent.length > 1 ? 'sont partis' : 'est parti'}.
           {room.isHost
-            ? ' Attends son retour, ou remplace-le par un bot depuis sa place.'
+            ? ' Attends son retour, ou confie sa place à un bot.'
             : " L'hôte peut le remplacer par un bot."}
         </span>
+        {room.isHost && (
+          <span className="rb-actions">
+            {room.absent.map((p) => (
+              <button key={p} className="tiny" onClick={() => room.fillBot(p)}>
+                <Icon name="bot" size={14} />
+                {room.absent.length > 1 ? `Bot à la place de ${name(p)}` : 'Remplacer par un bot'}
+              </button>
+            ))}
+          </span>
+        )}
       </div>
     );
   }
@@ -400,18 +410,10 @@ function PokerTable({ view }: { view: TableView }) {
             <div className="scards"><b>{handSizes[p] ?? 0}</b> cartes</div>
           </div>
           {state.contres.includes(p as PlayerId) && <div className="ctag">contre</div>}
-          {/* Le siège d'un absent porte lui-même la décision : c'est là qu'on le
-              cherche, plutôt que dans un bandeau à l'écart de la table. */}
-          {view.room?.absent.includes(p as PlayerId) && (
-            <div className="sgone">
-              <span className="gonetag">parti</span>
-              {view.room.isHost && (
-                <button className="tiny" onClick={() => view.room!.fillBot(p as PlayerId)}>
-                  <Icon name="bot" size={13} />Bot à sa place
-                </button>
-              )}
-            </div>
-          )}
+          {/* Le siège signale l'absence, sans plus : y loger un bouton élargirait
+              la plaque du joueur, et la table déborde sur mobile. La décision est
+              dans le bandeau du bas, avec la pause. */}
+          {view.room?.absent.includes(p as PlayerId) && <div className="gonetag">parti</div>}
         </div>
       ))}
       <div className="table-center">
