@@ -29,6 +29,7 @@ const PATHS = {
   globe: <><circle cx="12" cy="12" r="9" /><path d="M3 12h18" /><path d="M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18" /></>,
   bulb: <><path d="M9 17h6" /><path d="M10 21h4" /><path d="M12 3a6 6 0 0 0-3.5 10.9c.3.3.5.7.5 1.1h6c0-.4.2-.8.5-1.1A6 6 0 0 0 12 3" /></>,
   play: <path d="M8 5.5v13l11-6.5z" />,
+  pause: <><path d="M9 5v14" /><path d="M15 5v14" /></>,
 
   // --- Niveaux de bot ---
   leaf: <><path d="M4 20C4 11 10 5 20 4c1 10-5 16-13 16" /><path d="M4 20c4-4 7-6 11-8" /></>,

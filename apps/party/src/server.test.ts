@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { GameRoom, TIMING } from './core.js';
+import { GameRoom, TIMING, type RoomSnapshot } from './core.js';
 import type { Account, ClientMsg, ServerMsg } from '@barbu/engine';
 
 // Faux harnais de transport : capture les messages envoyés à chaque connexion.
@@ -19,11 +19,20 @@ const ACCOUNTS: Record<string, Account> = {
 class FakeRoom {
   id = 'TEST';
   conns: FakeConn[] = [];
+  /** Stockage persistant simulé (la Durable Object réelle : ctx.storage). */
+  saved: RoomSnapshot | null = null;
   getConnections() {
     return this.conns;
   }
   resolveAccount(token: string): Promise<Account | null> {
     return Promise.resolve(ACCOUNTS[token] ?? null);
+  }
+  loadState(): Promise<RoomSnapshot | null> {
+    return Promise.resolve(this.saved);
+  }
+  saveState(snapshot: RoomSnapshot) {
+    // Round-trip JSON : ce qui ne survit pas à la sérialisation se voit ici.
+    this.saved = JSON.parse(JSON.stringify(snapshot)) as RoomSnapshot;
   }
 }
 
@@ -142,7 +151,12 @@ describe('serveur en ligne', () => {
     }
     server.onMessage(msg({ t: 'START' }), host);
     await flush();
-    // L'hôte quitte : son siège est repris par un bot → la partie se joue seule.
+    // L'hôte confie son propre siège à un bot avant de partir → la partie se
+    // joue seule (une simple déconnexion, elle, suspendrait tout).
+    server.onMessage(msg({ t: 'ACTION', action: { t: 'CHOOSE_CONTRACT', contract: 'BARBU' } }), host);
+    server.seats[0]!.connId = undefined;
+    server.onMessage(msg({ t: 'SEAT', seat: 0, kind: 'bot', level: 'facile' }), host);
+    server.seats[0] = { kind: 'bot', name: 'Bot 1', avatar: 'bot', level: 'facile' };
     server.onClose(host);
     await driveToDone(server);
 
@@ -151,4 +165,127 @@ describe('serveur en ligne', () => {
     expect(server.match!.scores.reduce((a, b) => a + b, 0)).toBeGreaterThan(0);
     expect(server.history.length).toBe(28); // 28 manches journalisées
   }, 30000);
+
+  // --- Pause, absences, reprise --------------------------------------------
+
+  /** Salle prête : hôte en siège 0, second humain en siège 1, deux bots, partie lancée. */
+  async function startedRoom() {
+    const room = new FakeRoom();
+    const server = new GameRoom(room);
+    const host = new FakeConn('h');
+    const other = new FakeConn('o');
+    room.conns.push(host, other);
+    server.onMessage(msg({ t: 'JOIN', token: 'tok-host' }), host);
+    server.onMessage(msg({ t: 'JOIN', token: 'tok-other' }), other);
+    for (const seat of [2, 3] as const) {
+      server.onMessage(msg({ t: 'SEAT', seat, kind: 'bot', level: 'facile' }), host);
+    }
+    server.onMessage(msg({ t: 'START' }), host);
+    await flush();
+    return { room, server, host, other };
+  }
+
+  it('un joueur déconnecté n\'est pas remplacé par un bot : la partie se suspend', async () => {
+    const { server, host } = await startedRoom();
+    server.onClose(host);
+    for (let i = 0; i < 50; i++) await flush();
+
+    // Le siège reste au compte, et rien n'avance (aucune manche jouée).
+    expect(server.seats[0]!.kind).toBe('human');
+    expect(server.seats[0]!.profileId).toBe('p-host');
+    expect(server.history.length).toBe(0);
+    expect(server.match?.phase).not.toBe('DONE');
+  });
+
+  it('le joueur qui revient retrouve son siège et la partie repart', async () => {
+    const { room, server, host } = await startedRoom();
+    server.onClose(host);
+    await flush();
+
+    const back = new FakeConn('h2');
+    room.conns.push(back);
+    server.onMessage(msg({ t: 'JOIN', token: 'tok-host' }), back);
+    await flush();
+
+    expect(server.seats[0]!.connId).toBe('h2');
+    const view = back.sent.findLast((m) => m.t === 'VIEW');
+    expect(view?.t).toBe('VIEW');
+    if (view?.t !== 'VIEW') return;
+    expect(view.youSeat).toBe(0);
+    expect(view.halt.absent).toEqual([]);
+  });
+
+  it('l\'hôte peut mettre en pause, et lui seul', async () => {
+    const { server, host, other } = await startedRoom();
+
+    // Le second joueur ne peut que demander : la partie n'est pas en pause.
+    other.sent = [];
+    server.onMessage(msg({ t: 'PAUSE' }), other);
+    await flush();
+    expect(server.paused).toBe(false);
+    expect(other.sent.some((m) => m.t === 'ERROR')).toBe(true);
+
+    server.onMessage(msg({ t: 'ASK_PAUSE' }), other);
+    await flush();
+    expect(server.asks).toEqual([1]);
+
+    server.onMessage(msg({ t: 'PAUSE' }), host);
+    await flush();
+    expect(server.paused).toBe(true);
+    expect(server.asks).toEqual([]); // la décision de l'hôte tranche
+
+    // En pause, plus aucun coup n'est accepté.
+    host.sent = [];
+    server.onMessage(msg({ t: 'ACTION', action: { t: 'CHOOSE_CONTRACT', contract: 'BARBU' } }), host);
+    await flush();
+    expect(host.sent.some((m) => m.t === 'ERROR')).toBe(true);
+    expect(server.match?.currentContract).toBeNull();
+
+    server.onMessage(msg({ t: 'RESUME' }), host);
+    await flush();
+    expect(server.paused).toBe(false);
+  });
+
+  it('FILL_BOT : l\'hôte confie le siège d\'un absent à un bot, qui le rend au retour', async () => {
+    const { room, server, host, other } = await startedRoom();
+    server.onClose(other);
+    await flush();
+    expect(server.seats[1]!.kind).toBe('human'); // pas de bot automatique
+
+    server.onMessage(msg({ t: 'FILL_BOT', seat: 1, level: 'facile' }), host);
+    await flush();
+    expect(server.seats[1]!.kind).toBe('bot');
+    expect(server.seats[1]!.profileId).toBe('p-other'); // le titulaire est gardé
+
+    const back = new FakeConn('o2');
+    room.conns.push(back);
+    server.onMessage(msg({ t: 'JOIN', token: 'tok-other' }), back);
+    await flush();
+    expect(server.seats[1]!.kind).toBe('human');
+    expect(server.seats[1]!.connId).toBe('o2');
+  });
+
+  it('la salle restaure son état : reprise directe, sans reconfiguration', async () => {
+    const { room, server, host } = await startedRoom();
+    server.onMessage(msg({ t: 'ACTION', action: { t: 'CHOOSE_CONTRACT', contract: 'BARBU' } }), host);
+    await flush();
+    const saved = room.saved;
+    expect(saved).not.toBeNull();
+
+    // Nouvelle instance (l'ancienne a été évincée) : elle relit l'état.
+    const revived = new FakeRoom();
+    revived.saved = saved;
+    const server2 = new GameRoom(revived);
+    const conn = new FakeConn('h3');
+    revived.conns.push(conn);
+    server2.onConnect(conn);
+    server2.onMessage(msg({ t: 'JOIN', token: 'tok-host' }), conn);
+    await flush();
+
+    expect(server2.started).toBe(true);
+    expect(server2.match?.currentContract).toBe('BARBU');
+    expect(server2.seats[2]!.kind).toBe('bot');
+    const view = conn.sent.findLast((m) => m.t === 'VIEW');
+    expect(view?.t).toBe('VIEW'); // et pas un LOBBY de configuration
+  });
 });

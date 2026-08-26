@@ -2,7 +2,7 @@ import { DurableObject } from 'cloudflare:workers';
 import { Server, routePartykitRequest, type Connection, type WSMessage } from 'partyserver';
 import { isValidRoomCode } from '@barbu/engine';
 import type { Account, GameResultEntry, PublicProfile, SavedGame } from '@barbu/engine';
-import { GameRoom, type Conn } from './core.js';
+import { GameRoom, type Conn, type RoomSnapshot } from './core.js';
 import { AuthLogic, AuthError, bearerToken, type AccountRow, type AuthDB, type SessionRow } from './auth.js';
 import {
   SocialLogic,
@@ -12,6 +12,9 @@ import {
   type SocialDB,
   type StatsRow,
 } from './social.js';
+
+/** Clé de stockage de l'état d'une salle dans sa Durable Object. */
+const ROOM_KEY = 'room';
 
 /** Plafond du corps des requêtes JSON (sauvegarde de partie + marge d'encodage). */
 const MAX_BODY_BYTES = MAX_SAVED_GAME_BYTES * 2;
@@ -62,6 +65,11 @@ export class BarbuServer extends Server<Env> {
         const stub = env.Auth.get(env.Auth.idFromName('global'));
         void stub.recordOnlineGame(matchId, entries);
       },
+      // Une DO est évincée dès que plus personne n'est connecté : sans état
+      // persistant, revenir sur le code d'une partie en cours retombait sur une
+      // salle vierge (écran de configuration au lieu de la reprise).
+      loadState: () => ctx.storage.get<RoomSnapshot>(ROOM_KEY).then((s) => s ?? null),
+      saveState: (snapshot) => void ctx.storage.put(ROOM_KEY, snapshot),
     });
   }
 

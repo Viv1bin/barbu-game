@@ -10,6 +10,7 @@ import type {
   PlayerId,
   Rank,
   RedactedMatchState,
+  RoomHalt,
   SeatInfo,
   ServerMsg,
 } from '@barbu/engine';
@@ -19,6 +20,9 @@ import type { UiPause } from '../game/GameTable.js';
 export const PARTYKIT_HOST = import.meta.env.VITE_PARTYKIT_HOST ?? '127.0.0.1:8787';
 
 const COLLECT_MS = 900; // ms avant la sous-phase « ramassage » du pli
+
+/** Aucune suspension. Sert aussi de repli si le serveur est plus ancien que le front. */
+const NO_HALT: RoomHalt = { paused: false, absent: [], asks: [] };
 
 export interface OnlineGame {
   connected: boolean;
@@ -31,10 +35,17 @@ export interface OnlineGame {
   view: RedactedMatchState | null;
   history: MancheLog[];
   pause: UiPause | null;
+  /** Suspension de la partie : pause de l'hôte, absents, demandes en attente. */
+  halt: RoomHalt;
   // Actions lobby (hôte)
   configureSeat: (seat: PlayerId, kind: 'open' | 'bot', level?: Difficulty) => void;
   startMatch: (options: MatchOptions) => void;
   newGame: () => void;
+  // Administration de la partie
+  setPaused: (paused: boolean) => void;
+  askPause: () => void;
+  denyPause: () => void;
+  fillBot: (seat: PlayerId, level?: Difficulty) => void;
   // Actions de jeu
   chooseContract: (contract: ContractId, rank?: Rank) => void;
   respondContre: (contre: boolean) => void;
@@ -65,6 +76,7 @@ export function useOnlineGame(code: string, me: OnlineIdentity): OnlineGame {
   const [view, setView] = useState<RedactedMatchState | null>(null);
   const [history, setHistory] = useState<MancheLog[]>([]);
   const [pause, setPause] = useState<UiPause | null>(null);
+  const [halt, setHalt] = useState<RoomHalt>(NO_HALT);
 
   useEffect(() => {
     const socket = new PartySocket({ host: PARTYKIT_HOST, room: code });
@@ -95,6 +107,7 @@ export function useOnlineGame(code: string, me: OnlineIdentity): OnlineGame {
         setSeats(msg.seats);
         setYouSeat(msg.youSeat);
         setHostId(msg.hostId);
+        setHalt(msg.halt ?? NO_HALT);
         if (!msg.started) setView(null);
         return;
       }
@@ -102,6 +115,8 @@ export function useOnlineGame(code: string, me: OnlineIdentity): OnlineGame {
       setStarted(true);
       setSeats(msg.seats);
       setYouSeat(msg.youSeat);
+      setHostId(msg.hostId);
+      setHalt(msg.halt ?? NO_HALT);
       setView(msg.view);
       setHistory(msg.history);
       if (collectTimer.current) clearTimeout(collectTimer.current);
@@ -145,9 +160,14 @@ export function useOnlineGame(code: string, me: OnlineIdentity): OnlineGame {
     view,
     history,
     pause,
+    halt,
     configureSeat: (seat, kind, level) => send({ t: 'SEAT', seat, kind, level }),
     startMatch: (options) => send({ t: 'START', options }),
     newGame: () => send({ t: 'NEW_GAME' }),
+    setPaused: (paused) => send(paused ? { t: 'PAUSE' } : { t: 'RESUME' }),
+    askPause: () => send({ t: 'ASK_PAUSE' }),
+    denyPause: () => send({ t: 'DENY_PAUSE' }),
+    fillBot: (seat, level) => send({ t: 'FILL_BOT', seat, level }),
     chooseContract: (contract, rank) => send({ t: 'ACTION', action: { t: 'CHOOSE_CONTRACT', contract, rank } }),
     respondContre: (contre) =>
       send({ t: 'ACTION', action: { t: 'CONTRE', player: youSeat ?? 0, contre } }),

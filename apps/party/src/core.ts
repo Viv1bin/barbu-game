@@ -16,6 +16,7 @@ import {
   type MancheLog,
   type MatchState,
   type PlayerId,
+  type RoomHalt,
   type SeatInfo,
   type ServerMsg,
   type TrickPause,
@@ -43,11 +44,33 @@ function mulberry(seed: number): () => number {
 /** Occupant interne d'un siège (le serveur est la seule autorité). */
 interface Seat {
   kind: 'human' | 'bot' | 'open';
+  /**
+   * Compte titulaire du siège. Conservé même quand l'hôte fait reprendre le
+   * siège par un bot : le joueur qui revient le récupère au JOIN suivant.
+   */
   profileId?: string;
   name?: string;
   avatar?: string;
   level: Difficulty;
   connId?: string; // connexion active si un humain est présent
+}
+
+/**
+ * État persistant d'une salle. Une Durable Object est évincée dès que plus
+ * personne n'est connecté : sans ça, revenir sur le code d'une partie en cours
+ * retombait sur une salle vierge (donc l'écran de configuration).
+ */
+export interface RoomSnapshot {
+  v: 1;
+  /** Sièges sans `connId` : toutes les connexions sont mortes à la restauration. */
+  seats: Omit<Seat, 'connId'>[];
+  hostId: string | null;
+  started: boolean;
+  paused: boolean;
+  options: MatchOptions;
+  match: MatchState | null;
+  history: MancheLog[];
+  matchId: string | null;
 }
 
 /** Connexion minimale dont la salle a besoin : un identifiant et un envoi. */
@@ -70,6 +93,10 @@ export interface RoomHost {
   reportStart?(matchId: string, code: string, accountIds: string[]): void;
   /** Résultat d'une partie terminée (comptes humains + scores) → stats en ligne. */
   reportResult?(matchId: string, entries: GameResultEntry[]): void;
+  /** Relit l'état de la salle au réveil de l'instance (null si aucune partie). */
+  loadState?(): Promise<RoomSnapshot | null>;
+  /** Écrit l'état après chaque mutation (reprise après éviction). */
+  saveState?(snapshot: RoomSnapshot): void;
 }
 
 /**
@@ -94,13 +121,52 @@ export class GameRoom {
    * enchaîner plusieurs (« Rejouer ») : chacune a le sien, la salle garde son code.
    */
   matchId: string | null = null;
+  /** Pause décidée par l'hôte (les absences suspendent la partie séparément). */
+  paused = false;
+  /** Demandes de pause en attente de confirmation de l'hôte. */
+  asks: PlayerId[] = [];
   rng = mulberry((Math.random() * 2 ** 32) >>> 0);
 
   // Sérialise toutes les mutations d'état : évite les courses entre actions
   // humaines et coups de bots (qui s'exécutent avec des délais).
   private chain: Promise<void> = Promise.resolve();
 
-  constructor(private room: RoomHost) {}
+  constructor(private room: RoomHost) {
+    // Première tâche de la chaîne : tout message reçu entre-temps sera traité
+    // après, donc sur l'état restauré.
+    if (room.loadState) {
+      void this.run(async () => {
+        const snap = await room.loadState!();
+        if (snap && snap.v === 1) this.restore(snap);
+      });
+    }
+  }
+
+  private restore(snap: RoomSnapshot) {
+    this.seats = snap.seats.map((s) => ({ ...s })); // connId absent : personne n'est connecté
+    this.hostId = snap.hostId;
+    this.started = snap.started;
+    this.paused = snap.paused;
+    this.options = snap.options;
+    this.match = snap.match;
+    this.history = snap.history;
+    this.matchId = snap.matchId;
+    this.asks = [];
+  }
+
+  private snapshot(): RoomSnapshot {
+    return {
+      v: 1,
+      seats: this.seats.map(({ connId: _connId, ...rest }) => rest),
+      hostId: this.hostId,
+      started: this.started,
+      paused: this.paused,
+      options: this.options,
+      match: this.match,
+      history: this.history,
+      matchId: this.matchId,
+    };
+  }
 
   private run(task: () => Promise<void>): Promise<void> {
     this.chain = this.chain.then(task).catch((e) => console.error('[barbu]', e));
@@ -109,7 +175,9 @@ export class GameRoom {
 
   onConnect(conn: Conn) {
     // Le profil est inconnu jusqu'au JOIN → on envoie un instantané du lobby.
-    this.sendMsg(conn, this.lobbyMsg(null));
+    // Passé par la chaîne : la restauration de l'état doit avoir eu lieu, sinon
+    // un client qui revient sur une partie en cours verrait une salle vierge.
+    void this.run(async () => this.sendMsg(conn, this.lobbyMsg(null)));
   }
 
   onMessage(raw: string, sender: Conn) {
@@ -130,6 +198,16 @@ export class GameRoom {
         return void this.run(async () => this.handleAction(sender, msg.action)).then(() => this.tick());
       case 'NEW_GAME':
         return void this.run(async () => this.handleNewGame(sender)).then(() => this.tick());
+      case 'PAUSE':
+        return void this.run(async () => this.handlePause(sender, true));
+      case 'RESUME':
+        return void this.run(async () => this.handlePause(sender, false)).then(() => this.tick());
+      case 'FILL_BOT':
+        return void this.run(async () => this.handleFillBot(sender, msg)).then(() => this.tick());
+      case 'ASK_PAUSE':
+        return void this.run(async () => this.handleAskPause(sender));
+      case 'DENY_PAUSE':
+        return void this.run(async () => this.handleDenyPause(sender));
       case 'LEAVE':
         return void this.run(async () => this.detach(sender.id));
     }
@@ -154,6 +232,8 @@ export class GameRoom {
     const existing = this.seats.findIndex((s) => s.profileId === account.id);
     if (existing >= 0) {
       this.seats[existing]!.connId = sender.id;
+      // Reprend son siège même si l'hôte l'avait confié à un bot le temps de
+      // son absence : le compte reste le titulaire.
       this.seats[existing]!.kind = 'human';
       // Le profil peut avoir changé entre-temps (pseudo / avatar).
       this.seats[existing]!.name = account.pseudo;
@@ -174,6 +254,7 @@ export class GameRoom {
     }
     // Partie en cours et pas de siège correspondant → spectateur.
     this.broadcast();
+    this.tick(); // le retour d'un absent peut relancer la partie
   }
 
   private handleSeat(sender: Conn, msg: Extract<ClientMsg, { t: 'SEAT' }>) {
@@ -195,6 +276,8 @@ export class GameRoom {
     // Les options viennent de l'hôte : on les renormalise avant de s'en servir.
     this.options = normalizeMatchOptions(msg.options);
     this.started = true;
+    this.paused = false;
+    this.asks = [];
     this.history = [];
     this.match = createMatch(this.rng, this.options);
     this.reportGameStart();
@@ -211,10 +294,74 @@ export class GameRoom {
     this.broadcast();
   }
 
+  // -- Administration de la partie (hôte) ------------------------------------
+
+  /** Pause / reprise : décision de l'hôte seul, à tout moment de la partie. */
+  private handlePause(sender: Conn, paused: boolean) {
+    if (!this.isHost(sender)) return this.sendError(sender, 'Seul l\'hôte peut mettre en pause.');
+    if (!this.started) return;
+    this.paused = paused;
+    this.asks = []; // la décision de l'hôte tranche les demandes en attente
+    this.broadcast();
+  }
+
+  /** Un joueur suggère une pause ; elle ne prend effet que si l'hôte confirme. */
+  private handleAskPause(sender: Conn) {
+    const seat = this.seatOfConn(sender.id);
+    if (seat === null || !this.started || this.paused) return;
+    if (!this.asks.includes(seat)) this.asks.push(seat);
+    this.broadcast();
+  }
+
+  /** L'hôte refuse les demandes en attente (ou un joueur retire la sienne). */
+  private handleDenyPause(sender: Conn) {
+    const seat = this.seatOfConn(sender.id);
+    if (seat === null) return;
+    this.asks = this.isHost(sender) ? [] : this.asks.filter((p) => p !== seat);
+    this.broadcast();
+  }
+
+  /**
+   * Remplacement d'un joueur absent par un bot. **Seul** l'hôte peut le faire :
+   * une déconnexion ne met jamais un bot à la place toute seule, elle suspend la
+   * partie le temps que le joueur revienne.
+   */
+  private handleFillBot(sender: Conn, msg: Extract<ClientMsg, { t: 'FILL_BOT' }>) {
+    if (!this.isHost(sender)) return this.sendError(sender, 'Action réservée à l\'hôte.');
+    const seat = this.seats[msg.seat];
+    if (!seat || seat.kind !== 'human') return;
+    if (seat.connId) return this.sendError(sender, 'Ce joueur est connecté.');
+    // `profileId` est conservé : s'il revient, il retrouve son siège au JOIN.
+    this.seats[msg.seat] = {
+      kind: 'bot',
+      profileId: seat.profileId,
+      name: `Bot ${msg.seat + 1}`,
+      avatar: 'bot',
+      level: msg.level ?? DEFAULT_LEVEL,
+    };
+    this.broadcast();
+  }
+
+  /** Sièges humains sans connexion : la partie ne peut pas avancer sans eux. */
+  private absentSeats(): PlayerId[] {
+    if (!this.started) return [];
+    const out: PlayerId[] = [];
+    this.seats.forEach((s, i) => {
+      if (s.kind === 'human' && !s.connId) out.push(i as PlayerId);
+    });
+    return out;
+  }
+
+  /** Partie suspendue : pause de l'hôte, ou au moins un joueur absent. */
+  private halted(): boolean {
+    return this.paused || this.absentSeats().length > 0;
+  }
+
   // -- Jeu -------------------------------------------------------------------
 
   private async handleAction(sender: Conn, action: Action) {
     if (!this.match || this.match.phase === 'DONE') return this.sendError(sender, 'Aucune partie en cours.');
+    if (this.halted()) return this.sendError(sender, 'Partie en pause.');
     const seat = this.seatOfConn(sender.id);
     if (seat === null) return this.sendError(sender, 'Vous n\'êtes pas assis à cette table.');
     if (currentActor(this.match) !== seat) return this.sendError(sender, 'Ce n\'est pas votre tour.');
@@ -230,6 +377,7 @@ export class GameRoom {
   private tick() {
     void this.run(async () => {
       if (!this.match || this.match.phase === 'DONE') return;
+      if (this.halted()) return; // pause de l'hôte ou joueur absent : rien ne bouge
       const actor = currentActor(this.match);
       if (actor === null) return;
       const seat = this.seats[actor]!;
@@ -288,16 +436,31 @@ export class GameRoom {
   // -- Diffusion -------------------------------------------------------------
 
   private broadcast(pause: TrickPause | null = null) {
+    // Toute diffusion suit une mutation : c'est le point unique de sauvegarde.
+    this.room.saveState?.(this.snapshot());
     for (const conn of this.room.getConnections()) {
       const seat = this.seatOfConn(conn.id);
       this.sendMsg(conn, this.started && this.match ? this.viewMsg(seat, pause) : this.lobbyMsg(seat));
     }
   }
 
+  private halt(): RoomHalt {
+    return { paused: this.paused, absent: this.absentSeats(), asks: [...this.asks] };
+  }
+
   private viewMsg(seat: PlayerId | null, pause: TrickPause | null): ServerMsg {
     // Spectateur (seat null) : perspective -1 → aucune main révélée.
     const view = redactState(this.match!, seat ?? (-1 as PlayerId));
-    return { t: 'VIEW', view, seats: this.seatInfos(), youSeat: seat, history: this.history, pause };
+    return {
+      t: 'VIEW',
+      view,
+      seats: this.seatInfos(),
+      youSeat: seat,
+      hostId: this.hostId,
+      history: this.history,
+      pause,
+      halt: this.halt(),
+    };
   }
 
   private lobbyMsg(seat: PlayerId | null): ServerMsg {
@@ -309,6 +472,7 @@ export class GameRoom {
       youSeat: seat,
       started: this.started,
       options: this.options,
+      halt: this.halt(),
     };
   }
 
@@ -336,20 +500,35 @@ export class GameRoom {
   }
 
   private botControlled(seat: Seat): boolean {
-    return seat.kind === 'bot' || (seat.kind === 'human' && !seat.connId);
+    return seat.kind === 'bot';
   }
 
-  /** Un humain se déconnecte : son siège reste réservé, joué par un bot en attendant. */
+  /**
+   * Un humain se déconnecte : son siège lui reste réservé et la partie se
+   * suspend. Aucun bot ne prend sa place — il faut que l'hôte le décide
+   * (`FILL_BOT`), ou que le joueur revienne.
+   */
   private detach(connId: string) {
     const seat = this.seatOfConn(connId);
     if (seat === null) return;
     this.seats[seat]!.connId = undefined;
+    this.asks = this.asks.filter((p) => p !== seat);
     if (!this.started) {
       // Avant le début : le siège se libère complètement.
       this.seats[seat] = { kind: 'open', level: DEFAULT_LEVEL };
     }
+    // L'hôte s'en va : sans passation, plus personne ne pourrait reprendre la
+    // partie ni remplacer un absent. On transmet au premier humain connecté.
+    if (this.seats[seat]!.profileId === this.hostId || !this.started) this.migrateHost();
     this.broadcast();
-    this.tick(); // au cas où c'était son tour → un bot prend le relais
+  }
+
+  /** Transfère le rôle d'hôte si son titulaire n'est plus connecté. */
+  private migrateHost() {
+    const holder = this.seats.find((s) => s.profileId === this.hostId);
+    if (holder?.connId) return; // l'hôte est encore là
+    const next = this.seats.find((s) => s.kind === 'human' && s.connId && s.profileId);
+    if (next) this.hostId = next.profileId!;
   }
 
   private sendMsg(conn: Conn, msg: ServerMsg) {
