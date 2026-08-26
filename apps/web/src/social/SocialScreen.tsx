@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { Account, FriendInfo, FriendRequestInfo, PlayerStats } from '@barbu/engine';
 import { ApiError, useSocial } from './useSocial.js';
+import { Avatar } from '../ui/Avatar.js';
 
 type Tab = 'friends' | 'ranking' | 'stats';
 
@@ -17,7 +18,7 @@ export function SocialScreen({ token, me }: { token: string | null; me: Account 
 
       <div className="tabs socialtabs">
         <button className={tab === 'friends' ? 'on' : 'ghost'} onClick={() => setTab('friends')}>
-          Amis{social.snapshot.requests.some((r) => r.direction === 'incoming') ? ' ●' : ''}
+          Amis{social.snapshot.requests.some((r) => r.direction === 'incoming') && <span className="badge" />}
         </button>
         <button className={tab === 'ranking' ? 'on' : 'ghost'} onClick={() => setTab('ranking')}>Classement</button>
         <button className={tab === 'stats' ? 'on' : 'ghost'} onClick={() => setTab('stats')}>Mes stats</button>
@@ -125,7 +126,7 @@ function FriendsTab({ social }: { social: ReturnType<typeof useSocial> }) {
 function RequestRow({ req, children }: { req: FriendRequestInfo; children: React.ReactNode }) {
   return (
     <div className="friendrow">
-      <span className="avatar">{req.avatar}</span>
+      <Avatar name={req.avatar} />
       <span className="frname">{req.pseudo}</span>
       <span className="fractions">{children}</span>
     </div>
@@ -135,7 +136,7 @@ function RequestRow({ req, children }: { req: FriendRequestInfo; children: React
 function FriendRow({ friend, onRemove }: { friend: FriendInfo; onRemove: () => void }) {
   return (
     <div className="friendrow">
-      <span className="avatar">{friend.avatar}</span>
+      <Avatar name={friend.avatar} />
       <span className="frname">{friend.pseudo}</span>
       <span className={`frstat ${friend.online ? 'on' : ''}`}>
         <span className={`dot ${friend.online ? 'online' : ''}`} />
@@ -174,7 +175,7 @@ function RankingTab({ friends, me, myStats }: { friends: FriendInfo[]; me: Accou
         return (
           <div key={r.id} className={`rankrow ${r.isMe ? 'me' : ''}`}>
             <span className="rank">{i + 1}</span>
-            <span className="rankwho"><span className="avatar">{r.avatar}</span>{r.pseudo}{r.isMe ? ' (toi)' : ''}</span>
+            <span className="rankwho"><Avatar name={r.avatar} size="sm" />{r.pseudo}{r.isMe ? ' (toi)' : ''}</span>
             <span>{r.stats.wins}</span>
             <span>{r.stats.games}</span>
             <span>{rate}%</span>

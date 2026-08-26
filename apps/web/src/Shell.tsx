@@ -1,13 +1,15 @@
 import type { ReactNode } from 'react';
 import type { Auth } from './auth/useAuth.js';
+import { Avatar } from './ui/Avatar.js';
+import { Icon, type IconName } from './ui/Icon.js';
 
 /** Onglets du hub (hors partie) : accueil, amis, règles. */
 export type Tab = 'home' | 'friends' | 'rules';
 
-const TABS: { id: Tab; icon: string; label: string }[] = [
-  { id: 'home', icon: '🎴', label: 'Jouer' },
-  { id: 'friends', icon: '👥', label: 'Amis' },
-  { id: 'rules', icon: '📖', label: 'Règles' },
+const TABS: { id: Tab; icon: IconName; label: string }[] = [
+  { id: 'home', icon: 'cards', label: 'Jouer' },
+  { id: 'friends', icon: 'users', label: 'Amis' },
+  { id: 'rules', icon: 'book', label: 'Règles' },
 ];
 
 /**
@@ -33,7 +35,7 @@ export function AppShell({
       <header className="shell-head">
         <span className="shell-brand">Barbu</span>
         <button className="acctbtn" onClick={onAccount} title="Mon compte">
-          <span className="avatar">{me?.avatar}</span>
+          <Avatar name={me?.avatar} size="sm" />
           <span className="acctname">{me?.pseudo}</span>
         </button>
       </header>
@@ -43,7 +45,7 @@ export function AppShell({
       <nav className="tabbar">
         {TABS.map((t) => (
           <button key={t.id} className={`tabitem ${tab === t.id ? 'on' : ''}`} onClick={() => onTab(t.id)}>
-            <span className="tb-ic">{t.icon}</span>
+            <Icon name={t.icon} size={20} className="tb-ic" />
             <span className="tb-lb">{t.label}</span>
           </button>
         ))}

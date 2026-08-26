@@ -2,8 +2,17 @@
 // saisie, le serveur les applique pour de vrai. Toute règle qui n'existe que
 // côté client ne protège rien — un client modifié l'ignore.
 
-/** Avatars proposés à l'inscription et dans « Mon compte ». */
-export const AVATARS = ['🙂', '😎', '🦊', '🐙', '🐧', '🦁', '🐻', '🦉', '🐸', '🦄', '👑', '🎩'];
+/**
+ * Avatars proposés à l'inscription et dans « Mon compte ». Ce sont des noms
+ * d'icônes, pas des emoji : l'UI les rend en SVG monochrome. Un avatar stocké
+ * hors de cette liste (ancien compte) reste lisible côté client, qui retombe
+ * sur le défaut.
+ */
+export const AVATARS = [
+  'circle', 'square', 'triangle', 'diamond',
+  'hexagon', 'star', 'ring', 'drop',
+  'spade', 'club', 'moon', 'sun',
+];
 
 /** Avatar par défaut si aucun n'est choisi. */
 export const DEFAULT_AVATAR = AVATARS[0]!;

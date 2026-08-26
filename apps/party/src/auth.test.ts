@@ -57,9 +57,9 @@ const auth = () => new AuthLogic(new MemoryDB());
 describe('comptes', () => {
   it('inscription puis connexion réussies', async () => {
     const a = auth();
-    const reg = await a.register({ pseudo: 'Vivien', password: 'secret12', avatar: '🦊' });
+    const reg = await a.register({ pseudo: 'Vivien', password: 'secret12', avatar: 'star' });
     expect(reg.account.pseudo).toBe('Vivien');
-    expect(reg.account.avatar).toBe('🦊');
+    expect(reg.account.avatar).toBe('star');
     expect(reg.token).toBeTruthy();
 
     const log = await a.login({ pseudo: 'Vivien', password: 'secret12' });
@@ -97,10 +97,10 @@ describe('comptes', () => {
 
   it('updateProfile change avatar et pseudo, revalide l’unicité', async () => {
     const a = auth();
-    const { token } = await a.register({ pseudo: 'Dan', password: 'pw123456', avatar: '🙂' });
+    const { token } = await a.register({ pseudo: 'Dan', password: 'pw123456', avatar: 'circle' });
     await a.register({ pseudo: 'Eve', password: 'pw123456' });
-    const up = await a.updateProfile(token, { avatar: '👑', pseudo: 'Danny' });
-    expect(up.avatar).toBe('👑');
+    const up = await a.updateProfile(token, { avatar: 'moon', pseudo: 'Danny' });
+    expect(up.avatar).toBe('moon');
     expect(up.pseudo).toBe('Danny');
     // reconnexion possible avec le nouveau pseudo
     expect((await a.login({ pseudo: 'Danny', password: 'pw123456' })).account.id).toBe(up.id);

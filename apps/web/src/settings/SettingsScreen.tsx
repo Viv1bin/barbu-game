@@ -6,6 +6,8 @@ import { SUIT_RED, SUIT_SYMBOL } from '../format.js';
 import { PlayingCard } from '../game/Card.js';
 import { sortHand, useCardSort, type CardSortPref } from '../game/cardSort.js';
 import { useSavedGames } from '../social/useSavedGame.js';
+import { Avatar } from '../ui/Avatar.js';
+import { Icon, isIconName } from '../ui/Icon.js';
 import { SavedGamesList } from '../solo/SavedGamesList.js';
 
 /** Écran « Mon compte » : profil, tri des cartes, parties solo, session. */
@@ -46,7 +48,7 @@ export function SettingsScreen({
     <div className="app">
       <header>
         <div className="topbar">
-          <button className="ghost" onClick={onBack}>← Menu</button>
+          <button className="ghost" onClick={onBack}><Icon name="arrowLeft" size={16} />Menu</button>
           <h1>Mon compte <span className="mode">profil, cartes, parties</span></h1>
         </div>
       </header>
@@ -55,7 +57,7 @@ export function SettingsScreen({
         <div className="panel">
           <div className="panelhead">
             <h3>
-              <span className="avatar">{me.avatar}</span> {me.pseudo}
+              <Avatar name={me.avatar} size="lg" /> {me.pseudo}
             </h3>
           </div>
 
@@ -69,7 +71,7 @@ export function SettingsScreen({
                   disabled={busy}
                   onClick={() => a !== me.avatar && run({ avatar: a }, 'Avatar mis à jour.')}
                 >
-                  {a}
+                  {isIconName(a) && <Icon name={a} size={20} />}
                 </button>
               ))}
             </div>
@@ -98,7 +100,7 @@ export function SettingsScreen({
         <div className="panel">
           <div className="danger-zone">
             <p>Se déconnecter de ce navigateur. Ton compte et tes données restent sur le serveur.</p>
-            <button className="danger" onClick={auth.logout}>Se déconnecter</button>
+            <button className="danger" onClick={auth.logout}><Icon name="logout" size={16} />Se déconnecter</button>
           </div>
         </div>
       </main>
@@ -140,13 +142,13 @@ function CardSortPanel() {
       </div>
 
       <div className="field">
-        <label>Ordre des couleurs (gauche → droite)</label>
+        <label>Ordre des couleurs, de gauche à droite</label>
         <div className="suitorder">
           {pref.suitOrder.map((s, i) => (
             <div key={s} className={`suitchip ${SUIT_RED[s] ? 'red' : 'black'}`}>
-              <button className="ghost tiny" disabled={i === 0} onClick={() => move(i, -1)} aria-label="Déplacer à gauche">←</button>
+              <button className="ghost tiny" disabled={i === 0} onClick={() => move(i, -1)} aria-label="Déplacer à gauche"><Icon name="arrowLeft" size={14} /></button>
               <span className="suitsym">{SUIT_SYMBOL[s]}</span>
-              <button className="ghost tiny" disabled={i === pref.suitOrder.length - 1} onClick={() => move(i, 1)} aria-label="Déplacer à droite">→</button>
+              <button className="ghost tiny" disabled={i === pref.suitOrder.length - 1} onClick={() => move(i, 1)} aria-label="Déplacer à droite"><Icon name="arrowRight" size={14} /></button>
             </div>
           ))}
         </div>

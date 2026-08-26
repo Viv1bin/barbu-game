@@ -5,8 +5,9 @@ import { useSavedGames } from '../social/useSavedGame.js';
 import { SavedGamesList } from './SavedGamesList.js';
 import { GameTable, type LeaveOptions, type SeatLabel, type TableView } from '../game/GameTable.js';
 import { PLAYER_NAMES } from '../format.js';
+import { Icon, type IconName } from '../ui/Icon.js';
 
-const SEAT_AVATARS = ['🙂', '🤖', '🤖', '🤖'];
+const SEAT_AVATARS: IconName[] = ['circle', 'bot', 'bot', 'bot'];
 
 /** Identifiant de partie stable (crypto si dispo, sinon repli). */
 function newGameId(): string {
@@ -73,11 +74,11 @@ export function SoloScreen({
   );
 }
 
-const LEVELS: { id: Difficulty; icon: string; title: string; desc: string }[] = [
-  { id: 'facile', icon: '🍀', title: 'Facile', desc: 'Coups au hasard. Pour découvrir le jeu.' },
-  { id: 'moyen', icon: '🎯', title: 'Moyen', desc: 'Esquive les pénalités, défausse malin.' },
-  { id: 'difficile', icon: '🧠', title: 'Difficile', desc: 'Compte les cartes, encaisse les couleurs mortes, contre finement.' },
-  { id: 'impossible', icon: '💀', title: 'Impossible', desc: "Simule des milliers de coups, joue quasi parfaitement, contre à l'espérance. Ne voit jamais les mains adverses." },
+const LEVELS: { id: Difficulty; icon: IconName; title: string; desc: string }[] = [
+  { id: 'facile', icon: 'leaf', title: 'Facile', desc: 'Coups au hasard. Pour découvrir le jeu.' },
+  { id: 'moyen', icon: 'target', title: 'Moyen', desc: 'Esquive les pénalités, défausse malin.' },
+  { id: 'difficile', icon: 'layers', title: 'Difficile', desc: 'Compte les cartes, encaisse les couleurs mortes, contre finement.' },
+  { id: 'impossible', icon: 'bolt', title: 'Impossible', desc: "Simule des milliers de coups, joue quasi parfaitement, contre à l'espérance. Ne voit jamais les mains adverses." },
 ];
 
 type SetupTab = 'home' | 'new' | 'load';
@@ -104,7 +105,7 @@ function SoloSetup({
     <div className="app">
       <div className="topbar">
         <button className="ghost" onClick={() => (tab === 'home' ? onBack() : setTab('home'))}>
-          {tab === 'home' ? '← Menu' : '← Retour'}
+          <Icon name="arrowLeft" size={16} />{tab === 'home' ? 'Menu' : 'Retour'}
         </button>
         <h1>
           Solo{' '}
@@ -115,12 +116,12 @@ function SoloSetup({
       {tab === 'home' && (
         <div className="modes">
           <button className="modecard" onClick={() => setTab('new')}>
-            <span className="micon">✨</span>
+            <span className="micon"><Icon name="plus" size={22} /></span>
             <span className="mtitle">Nouvelle partie</span>
             <span className="mdesc">Choisis un niveau de difficulté et commence une partie contre 3 bots.</span>
           </button>
           <button className="modecard" disabled={count === 0} onClick={() => setTab('load')}>
-            <span className="micon">⏯️</span>
+            <span className="micon"><Icon name="play" size={22} /></span>
             <span className="mtitle">Reprendre une partie{count > 0 && <em> — {count}</em>}</span>
             <span className="mdesc">
               {count > 0 ? 'Reprends une partie en cours là où tu t’es arrêté.' : 'Aucune partie en cours pour l’instant.'}
@@ -133,7 +134,7 @@ function SoloSetup({
         <>
           <label className={`aidtoggle ${aid ? 'on' : ''}`}>
             <input type="checkbox" checked={aid} onChange={(e) => onToggleAid(e.target.checked)} />
-            <span className="aidmark">💡</span>
+            <span className="aidmark"><Icon name="bulb" size={20} /></span>
             <span className="aidtext">
               <b>Mode aide</b> — l'IA « impossible » surligne le meilleur coup à chaque décision.
             </span>
@@ -141,7 +142,7 @@ function SoloSetup({
           <div className="modes levelpick">
             {LEVELS.map((l) => (
               <button key={l.id} className="modecard" onClick={() => onStart(l.id)}>
-                <span className="micon">{l.icon}</span>
+                <span className="micon"><Icon name={l.icon} size={22} /></span>
                 <span className="mtitle">{l.title}</span>
                 <span className="mdesc">{l.desc}</span>
               </button>

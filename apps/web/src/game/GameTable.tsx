@@ -28,6 +28,8 @@ import {
   rankLabel,
 } from '../format.js';
 import { PlayingCard } from './Card.js';
+import { Avatar } from '../ui/Avatar.js';
+import { Icon } from '../ui/Icon.js';
 import { sortHand, useCardSort } from './cardSort.js';
 
 // ---------------------------------------------------------------------------
@@ -129,13 +131,13 @@ export function GameTable({
     <div className="app solo">
       <header>
         <div className="topbar">
-          <button className="ghost" onClick={() => (leaveOptions && !done ? setLeaving(true) : onBack())}>← Menu</button>
+          <button className="ghost" onClick={() => (leaveOptions && !done ? setLeaving(true) : onBack())}><Icon name="arrowLeft" size={16} />Menu</button>
           <h1>Barbu <span className="mode">{title}</span></h1>
         </div>
         <div className="meta">
           <span>Manche {Math.min(state.mancheCount + 1, 28)}/28</span>
           <span>Contrat : {state.currentContract ? CONTRACT_LABEL[state.currentContract] : '—'}</span>
-          <button className="ghost" onClick={() => setShowScores(true)}>📊 Scores</button>
+          <button className="ghost" onClick={() => setShowScores(true)}><Icon name="chart" size={16} />Scores</button>
         </div>
       </header>
 
@@ -162,8 +164,8 @@ function LeaveDialog({ onSave, onDiscard, onCancel }: { onSave: () => void; onDi
         <h2>Quitter la partie ?</h2>
         <p className="muted">Tu peux la garder pour la reprendre plus tard, ou la supprimer définitivement.</p>
         <div className="leave-actions">
-          <button onClick={onSave}>💾 Garder et quitter</button>
-          <button className="danger" onClick={onDiscard}>🗑️ Supprimer la partie</button>
+          <button onClick={onSave}><Icon name="archive" size={16} />Garder et quitter</button>
+          <button className="danger" onClick={onDiscard}><Icon name="trash" size={16} />Supprimer la partie</button>
           <button className="ghost" onClick={onCancel}>Continuer à jouer</button>
         </div>
       </div>
@@ -185,7 +187,7 @@ function ScoresModal({ view, onClose }: { view: TableView; onClose: () => void }
     <div className="modal-back" onClick={onClose}>
       <div className="modal scores-modal" onClick={(e) => e.stopPropagation()}>
         <div className="topbar">
-          <h2>📊 Tableau des scores</h2>
+          <h2>Tableau des scores</h2>
           <button className="ghost" onClick={onClose}>Fermer</button>
         </div>
 
@@ -200,7 +202,7 @@ function ScoresModal({ view, onClose }: { view: TableView; onClose: () => void }
                   <th>Donneur</th>
                   <th>Contrat</th>
                   {seats.map((s, p) => (
-                    <th key={p} className="pcol">{s.avatar} {s.name}</th>
+                    <th key={p} className="pcol"><Avatar name={s.avatar} size="sm" /> {s.name}</th>
                   ))}
                 </tr>
               </thead>
@@ -208,9 +210,9 @@ function ScoresModal({ view, onClose }: { view: TableView; onClose: () => void }
                 {history.map((m, i) => (
                   <tr key={i}>
                     <td className="dim">{i + 1}</td>
-                    <td>{seats[m.dealer]!.avatar}</td>
+                    <td><Avatar name={seats[m.dealer]!.avatar} size="sm" /></td>
                     <td>
-                      {CONTRACT_ICON[m.contract]} {CONTRACT_LABEL[m.contract]}
+                      <Icon name={CONTRACT_ICON[m.contract]} size={15} /> {CONTRACT_LABEL[m.contract]}
                       {m.contres.length > 0 && (
                         <span className="ctrtag" title={`Contré par ${m.contres.map((c) => seats[c]!.name).join(', ')}`}>
                           ×{m.contres.length}
@@ -258,10 +260,10 @@ function ContractsOverview({ view }: { view: TableView }) {
           const remaining = ALL_CONTRACTS.filter((c) => !done.includes(c));
           return (
             <div key={p} className="cov-player">
-              <div className="cov-name">{s.avatar} {s.name}</div>
+              <div className="cov-name"><Avatar name={s.avatar} size="sm" /> {s.name}</div>
               <div className="cov-chips">
                 {remaining.length === 0 ? (
-                  <span className="cabbr done">✓ terminé</span>
+                  <span className="cabbr done"><Icon name="check" size={13} /> terminé</span>
                 ) : (
                   remaining.map((c) => (
                     <span
@@ -269,7 +271,7 @@ function ContractsOverview({ view }: { view: TableView }) {
                       className={`cabbr ${state.currentContract === c && p === state.dealer ? 'now' : ''}`}
                       title={CONTRACT_LABEL[c]}
                     >
-                      {CONTRACT_ICON[c]} {CONTRACT_ABBR[c]}
+                      <Icon name={CONTRACT_ICON[c]} size={13} /> {CONTRACT_ABBR[c]}
                     </span>
                   ))
                 )}
@@ -298,11 +300,11 @@ function PokerTable({ view }: { view: TableView }) {
           key={p}
           className={`seat ${SEAT_CLASS[pos(p)]} ${activeSeat === p ? 'active' : ''} ${p === state.dealer ? 'dealer' : ''} ${pause?.winner === p ? 'won' : ''}`}
         >
-          <div className="avatar">{seat.avatar}</div>
+          <Avatar name={seat.avatar} />
           <div className="sinfo">
-            <div className="sname">{seat.name}{p === state.dealer ? ' 👑' : ''}</div>
+            <div className="sname">{seat.name}{p === state.dealer && <Icon name="crown" size={13} className="dealermark" />}</div>
             <div className="sscore">{state.scores[p]} pts</div>
-            <div className="scards"><b>{handSizes[p] ?? 0}</b> 🂠</div>
+            <div className="scards"><b>{handSizes[p] ?? 0}</b> cartes</div>
           </div>
           {state.contres.includes(p as PlayerId) && <div className="ctag">contre</div>}
         </div>
@@ -319,7 +321,7 @@ function Center({ view }: { view: TableView }) {
   if (pause) return <TrickCards trick={pause.trick} winner={pause.winner} collecting={pause.collecting} you={you} />;
   if (state.phase === 'DONE') return <DoneScreen view={view} />;
   if (state.phase === 'CHOOSE_CONTRACT') {
-    if (state.dealer === you) return <Waiting text="Choisis ton contrat ci-dessous ↓" />;
+    if (state.dealer === you) return <Waiting text="Choisis ton contrat ci-dessous" />;
     return <Waiting text={`${seats[state.dealer]!.name} choisit le contrat…`} />;
   }
   if (state.phase === 'CONTRE') {
@@ -343,7 +345,7 @@ function ContractAnnounce({ state, seats }: { state: MatchState; seats: SeatLabe
   return (
     <div className="announce">
       <div className="alabel">Contrat annoncé par {seats[state.dealer]!.name}</div>
-      <div className="abig">{CONTRACT_ICON[c]} {CONTRACT_LABEL[c]}</div>
+      <div className="abig"><Icon name={CONTRACT_ICON[c]} size={26} /> {CONTRACT_LABEL[c]}</div>
       {c === 'REUSSITE' && state.reussiteRank != null && (
         <div className="aheight">hauteur {rankLabel(state.reussiteRank)}</div>
       )}
@@ -405,7 +407,7 @@ function ReussiteView({ round, seats }: { round: ReussiteState; seats: SeatLabel
           );
         })}
       </div>
-      <div className="finish">Sortis : {round.finishOrder.map((p) => seats[p]!.name).join(' → ') || '—'}</div>
+      <div className="finish">Sortis : {round.finishOrder.map((p) => seats[p]!.name).join(', ') || '—'}</div>
     </div>
   );
 }
@@ -426,7 +428,7 @@ function ContractBar({ view }: { view: TableView }) {
       <div className="contract-bar">
         <div className="cb-head">
           <b>Réussite — hauteur d'ouverture ?</b>
-          <button className="ghost tiny" onClick={() => setReussite(false)}>← retour</button>
+          <button className="ghost tiny" onClick={() => setReussite(false)}><Icon name="arrowLeft" size={14} />retour</button>
         </div>
         <div className="cb-row">
           {handRanks.map((r) => (
@@ -448,7 +450,7 @@ function ContractBar({ view }: { view: TableView }) {
       <div className="cb-head">
         <b>À toi de donner — choisis un contrat</b>
         {tip && (
-          <span className="cb-tip">💡 {CONTRACT_LABEL[tip.contract]}{tip.contract === 'REUSSITE' && tip.rank != null ? ` (${rankLabel(tip.rank)})` : ''}</span>
+          <span className="cb-tip"><Icon name="bulb" size={15} /> {CONTRACT_LABEL[tip.contract]}{tip.contract === 'REUSSITE' && tip.rank != null ? ` (${rankLabel(tip.rank)})` : ''}</span>
         )}
       </div>
       <div className="cb-row">
@@ -459,7 +461,7 @@ function ContractBar({ view }: { view: TableView }) {
             title={CONTRACT_HINT[c]}
             onClick={() => (c === 'REUSSITE' ? setReussite(true) : actions.chooseContract(c))}
           >
-            <span className="cb-ic">{CONTRACT_ICON[c]}</span>
+            <span className="cb-ic"><Icon name={CONTRACT_ICON[c]} size={17} /></span>
             {CONTRACT_LABEL[c]}
           </button>
         ))}
@@ -474,7 +476,7 @@ function ContrePanel({ view }: { view: TableView }) {
   return (
     <div className="picker">
       <p>Contrer le donneur ({seats[state.dealer]!.name}) ?</p>
-      {tip && <p className="hinttip">💡 Conseil : <b>{tip.contre ? 'Contre' : 'Passe'}</b></p>}
+      {tip && <p className="hinttip"><Icon name="bulb" size={15} /> Conseil : <b>{tip.contre ? 'Contre' : 'Passe'}</b></p>}
       <div className="btnrow">
         <button className={tip?.contre === true ? 'hinted' : ''} onClick={() => actions.respondContre(true)}>Contre</button>
         <button className={`ghost ${tip?.contre === false ? 'hinted' : ''}`} onClick={() => actions.respondContre(false)}>Passe</button>
@@ -517,7 +519,7 @@ function HumanDock({ view }: { view: TableView }) {
     <footer className="dock">
       <div className="handbar">
         <span className="handlabel">Votre main{myTurn ? ' · à vous' : ''}</span>
-        {myTurn && hintCardId && <span className="handhint">💡 coup conseillé surligné</span>}
+        {myTurn && hintCardId && <span className="handhint"><Icon name="bulb" size={14} /> coup conseillé surligné</span>}
         {canHumanPass && (
           <button className={`pass ${hintPass ? 'hinted' : ''}`} onClick={actions.reussitePass}>Passer</button>
         )}
@@ -565,7 +567,7 @@ function DoneScreen({ view }: { view: TableView }) {
           </li>
         ))}
       </ol>
-      <p className="winnote">🏆 {ranking[0]!.name} gagne (moins de points).</p>
+      <p className="winnote"><Icon name="trophy" size={17} /> {ranking[0]!.name} gagne (moins de points).</p>
       <div className="btnrow">
         {lastDeal && <button className="ghost" onClick={() => setReveal((v) => !v)}>{reveal ? 'Masquer' : 'Révéler'} les mains</button>}
         {onNewGame && <button onClick={onNewGame}>Rejouer</button>}

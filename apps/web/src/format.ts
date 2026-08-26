@@ -1,4 +1,5 @@
 import type { Card, ContractId, Rank, Suit } from '@barbu/engine';
+import type { IconName } from './ui/Icon.js';
 
 export const SUIT_SYMBOL: Record<Suit, string> = { H: '♥', S: '♠', D: '♦', C: '♣' };
 export const SUIT_RED: Record<Suit, boolean> = { H: true, D: true, S: false, C: false };
@@ -31,15 +32,15 @@ export const CONTRACT_ABBR: Record<ContractId, string> = {
   REUSSITE: 'Ré',
 };
 
-/** Emoji illustrant chaque contrat (choix des contrats en modale). */
-export const CONTRACT_ICON: Record<ContractId, string> = {
-  BARBU: '🧔',
-  COEUR: '♥️',
-  DEUXDER: '🔚',
-  DAMES: '👸',
-  PLIS: '🃏',
-  SALADE: '🥗',
-  REUSSITE: '🎯',
+/** Icône monochrome illustrant chaque contrat. */
+export const CONTRACT_ICON: Record<ContractId, IconName> = {
+  BARBU: 'crown',
+  COEUR: 'heart',
+  DEUXDER: 'skipEnd',
+  DAMES: 'gem',
+  PLIS: 'layers',
+  SALADE: 'shuffle',
+  REUSSITE: 'target',
 };
 
 /** Rappel de règle court, affiché sous le nom du contrat pour rester compréhensible. */

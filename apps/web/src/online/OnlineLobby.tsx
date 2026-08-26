@@ -1,12 +1,14 @@
 import type { Difficulty, PlayerId, SeatInfo } from '@barbu/engine';
 import type { OnlineGame } from './useOnlineGame.js';
+import { Avatar } from '../ui/Avatar.js';
+import { Icon } from '../ui/Icon.js';
 
 const SEAT_LABEL = ['Siège 1', 'Siège 2', 'Siège 3', 'Siège 4'];
 const LEVELS: { id: Difficulty; label: string }[] = [
-  { id: 'facile', label: '🍀 Facile' },
-  { id: 'moyen', label: '🎯 Moyen' },
-  { id: 'difficile', label: '🧠 Difficile' },
-  { id: 'impossible', label: '💀 Impossible' },
+  { id: 'facile', label: 'Facile' },
+  { id: 'moyen', label: 'Moyen' },
+  { id: 'difficile', label: 'Difficile' },
+  { id: 'impossible', label: 'Impossible' },
 ];
 
 /** Salon d'attente : code partageable + configuration des sièges par l'hôte. */
@@ -18,7 +20,7 @@ export function OnlineLobby({ game, code, onBack }: { game: OnlineGame; code: st
   return (
     <div className="app">
       <div className="topbar">
-        <button className="ghost" onClick={onBack}>← Retour</button>
+        <button className="ghost" onClick={onBack}><Icon name="arrowLeft" size={16} />Retour</button>
         <h1>Salon en ligne</h1>
       </div>
 
@@ -26,11 +28,13 @@ export function OnlineLobby({ game, code, onBack }: { game: OnlineGame; code: st
         <div className="roomcode">
           <span className="rclabel">Code de la partie</span>
           <span className="rccode">{code}</span>
-          <button className="ghost tiny" onClick={() => navigator.clipboard?.writeText(link)}>Copier le lien</button>
+          <button className="ghost tiny" onClick={() => navigator.clipboard?.writeText(link)}>
+            <Icon name="copy" size={15} />Copier le lien
+          </button>
         </div>
 
         {!game.connected && <p className="muted">Connexion au serveur…</p>}
-        {game.error && <p className="errline">⚠️ {game.error}</p>}
+        {game.error && <p className="errline"><Icon name="warning" size={16} />{game.error}</p>}
 
         <div className="seatgrid">
           {seats.map((s) => (
@@ -69,21 +73,21 @@ function SeatSlot({
 
       {seat.kind === 'human' && (
         <>
-          <div className="avatar big">{seat.avatar ?? '🙂'}</div>
+          <Avatar name={seat.avatar} size="lg" />
           <div className="pfname">{seat.name}</div>
           {seat.connected === false && <div className="muted">déconnecté…</div>}
         </>
       )}
       {seat.kind === 'bot' && (
         <>
-          <div className="avatar big">🤖</div>
+          <span className="avatar avatar-lg"><Icon name="bot" size={26} /></span>
           <div className="pfname">{seat.name ?? 'Bot'}</div>
           <div className="muted">{seat.level}</div>
         </>
       )}
       {seat.kind === 'open' && (
         <>
-          <div className="avatar big">🪑</div>
+          <span className="avatar avatar-lg empty"><Icon name="seat" size={26} /></span>
           <div className="pfname muted">Libre</div>
         </>
       )}
@@ -91,7 +95,7 @@ function SeatSlot({
       {isHost && seat.kind !== 'human' && (
         <div className="btnrow tight">
           {seat.kind === 'open' ? (
-            <button className="ghost tiny" onClick={() => onConfigure(seat.seat, 'bot', 'difficile')}>＋ Bot</button>
+            <button className="ghost tiny" onClick={() => onConfigure(seat.seat, 'bot', 'difficile')}><Icon name="plus" size={15} />Bot</button>
           ) : (
             <>
               <button className="ghost tiny" onClick={() => onConfigure(seat.seat, 'open')}>Ouvrir</button>

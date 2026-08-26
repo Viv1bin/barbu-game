@@ -1,5 +1,6 @@
 import { ALL_CONTRACTS } from '@barbu/engine';
 import { CONTRACT_HINT, CONTRACT_ICON, CONTRACT_LABEL } from './format.js';
+import { Icon } from './ui/Icon.js';
 
 /** Onglet Règles : rappel du principe et des 7 contrats (icône + but à éviter). */
 export function RulesScreen() {
@@ -21,7 +22,7 @@ export function RulesScreen() {
       <div className="ruleslist">
         {ALL_CONTRACTS.map((c) => (
           <div key={c} className="rulecard">
-            <span className="rc-ic">{CONTRACT_ICON[c]}</span>
+            <span className="rc-ic"><Icon name={CONTRACT_ICON[c]} size={20} /></span>
             <div className="rc-body">
               <div className="rc-name">{CONTRACT_LABEL[c]}</div>
               <div className="rc-hint">{CONTRACT_HINT[c]}</div>
