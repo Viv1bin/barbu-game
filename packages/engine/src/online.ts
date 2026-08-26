@@ -84,6 +84,15 @@ export interface OnlineMatch {
   startedAt: string;
   /** null si la partie est encore en cours. */
   endedAt: string | null;
+  /**
+   * Compte qui a créé la salle : lui seul peut supprimer la partie. null pour
+   * les parties ouvertes avant que le créateur soit enregistré.
+   */
+  ownerId: string | null;
+  /** Manches terminées. Avec `totalManches`, donne l'avancement d'une partie en cours. */
+  manches: number;
+  /** Manches prévues par les règles choisies (28 en partie complète). */
+  totalManches: number;
   players: MatchPlayer[];
 }
 

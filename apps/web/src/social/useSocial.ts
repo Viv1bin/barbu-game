@@ -106,19 +106,35 @@ export function useSocial(token: string | null): Social {
  * l'onglet « Jouer ». Chargées une fois au montage : l'onglet est démonté quand
  * on le quitte, donc y revenir suffit à rafraîchir la liste.
  */
-export function useLiveMatches(token: string | null): OnlineMatch[] {
+export function useLiveMatches(token: string | null): {
+  live: OnlineMatch[];
+  /** Supprime définitivement une partie de l'historique (créateur uniquement). */
+  remove: (matchId: string) => Promise<void>;
+} {
   const [live, setLive] = useState<OnlineMatch[]>([]);
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!token) return;
-    let alive = true;
-    apiFetch<{ matches: OnlineMatch[] }>('/social/matches', { token })
-      .then((r) => alive && setLive(r.matches.filter((m) => !m.endedAt)))
-      .catch(() => {}); // pas de reprise proposée : l'écran « En ligne » reste accessible
-    return () => {
-      alive = false;
-    };
+    try {
+      const r = await apiFetch<{ matches: OnlineMatch[] }>('/social/matches', { token });
+      setLive(r.matches.filter((m) => !m.endedAt));
+    } catch {
+      /* pas de reprise proposée : l'écran « En ligne » reste accessible */
+    }
   }, [token]);
-  return live;
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const remove = useCallback(
+    async (matchId: string) => {
+      await apiFetch('/social/match/delete', { token, body: { id: matchId } });
+      await load();
+    },
+    [token, load],
+  );
+
+  return { live, remove };
 }
 
 /**

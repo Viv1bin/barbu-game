@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import type { OnlineMatch } from '@barbu/engine';
 import type { Auth } from './auth/useAuth.js';
 import { Icon, type IconName } from './ui/Icon.js';
 import { Avatar } from './ui/Avatar.js';
@@ -24,7 +26,10 @@ export function Menu({
   const me = auth.account;
   // Quitter une partie en ligne renvoie au menu sans la clore : elle reste
   // ouverte côté serveur, on la propose donc ici plutôt que dans l'onglet Amis.
-  const live = useLiveMatches(auth.token);
+  const { live, remove } = useLiveMatches(auth.token);
+  // Partie dont la suppression attend confirmation (irréversible).
+  const [confirm, setConfirm] = useState<OnlineMatch | null>(null);
+  const [busy, setBusy] = useState(false);
 
   return (
     <div className="hub">
@@ -52,21 +57,97 @@ export function Menu({
         <div className="panel resumepanel">
           <div className="panelhead"><h3>Parties en cours</h3></div>
           {live.map((m) => (
-            <div key={m.id} className="resumerow">
-              <span className="resumewho">
-                {m.players
-                  .filter((p) => p.id !== me?.id)
-                  .map((p) => (
-                    <span key={p.id} className="mr-p"><Avatar name={p.avatar} size="sm" />{p.pseudo}</span>
-                  ))}
-              </span>
-              <button className="tiny" onClick={() => onJoinRoom(m.code)}>
-                <Icon name="play" size={14} />Reprendre
-              </button>
-            </div>
+            <LiveMatchRow
+              key={m.id}
+              match={m}
+              meId={me?.id}
+              onJoin={() => onJoinRoom(m.code)}
+              onDelete={() => setConfirm(m)}
+            />
           ))}
         </div>
       )}
+
+      {confirm && (
+        <div className="modal-back" onClick={() => !busy && setConfirm(null)}>
+          <div className="modal leave-modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Supprimer cette partie ?</h2>
+            <p className="muted">
+              La partie <b>{confirm.code}</b> disparaîtra pour tous les joueurs, avec sa progression.
+              Cette action est irréversible.
+            </p>
+            <div className="leave-actions">
+              <button
+                className="danger"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    await remove(confirm.id);
+                    setConfirm(null);
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Supprimer définitivement
+              </button>
+              <button className="ghost" disabled={busy} onClick={() => setConfirm(null)}>Annuler</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const DATE_FMT = new Intl.DateTimeFormat('fr-FR', {
+  day: '2-digit',
+  month: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+/**
+ * Une partie encore ouverte : quand elle a commencé, où elle en est, contre qui.
+ * Le bouton de suppression n'apparaît qu'au créateur de la salle — l'entrée est
+ * partagée par tous les participants, le serveur refuse de toute façon les autres.
+ */
+function LiveMatchRow({
+  match,
+  meId,
+  onJoin,
+  onDelete,
+}: {
+  match: OnlineMatch;
+  meId: string | undefined;
+  onJoin: () => void;
+  onDelete: () => void;
+}) {
+  const others = match.players.filter((p) => p.id !== meId);
+  // Parties ouvertes avant l'enregistrement de l'avancement : total à 0.
+  const pct = match.totalManches ? Math.round((match.manches / match.totalManches) * 100) : null;
+
+  return (
+    <div className="resumerow">
+      <div className="resumemeta">
+        <span className="mr-when">{DATE_FMT.format(new Date(match.startedAt))}</span>
+        <span className="mr-code">{match.code}</span>
+        {pct !== null && (
+          <span className="resumeprog">Manche {Math.min(match.manches + 1, match.totalManches)}/{match.totalManches} · {pct}%</span>
+        )}
+      </div>
+      <span className="resumewho">
+        {others.map((p) => (
+          <span key={p.id} className="mr-p"><Avatar name={p.avatar} size="sm" />{p.pseudo}</span>
+        ))}
+      </span>
+      <div className="resumeactions">
+        {match.ownerId === meId && (
+          <button className="ghost tiny" onClick={onDelete}>Supprimer</button>
+        )}
+        <button className="tiny" onClick={onJoin}><Icon name="play" size={14} />Reprendre</button>
+      </div>
     </div>
   );
 }

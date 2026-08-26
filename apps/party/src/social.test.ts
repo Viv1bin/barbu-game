@@ -76,8 +76,34 @@ class MemoryDB implements SocialDB {
   deleteSavedGame(accountId: string, gameId: string) {
     this.saves.get(accountId)?.delete(gameId);
   }
-  openMatch(id: string, code: string, startedAt: string, accountIds: string[]) {
-    this.matches.set(id, { id, code, startedAt, endedAt: null, players: accountIds.map((a) => ({ accountId: a, score: null })) });
+  openMatch(
+    id: string,
+    code: string,
+    startedAt: string,
+    accountIds: string[],
+    ownerId: string | null = null,
+    totalManches = 0,
+  ) {
+    this.matches.set(id, {
+      id,
+      code,
+      startedAt,
+      endedAt: null,
+      ownerId,
+      manches: 0,
+      totalManches,
+      players: accountIds.map((a) => ({ accountId: a, score: null })),
+    });
+  }
+  setMatchProgress(id: string, manches: number) {
+    const m = this.matches.get(id);
+    if (m) m.manches = manches;
+  }
+  getMatch(id: string) {
+    return this.matches.get(id);
+  }
+  deleteMatch(id: string) {
+    this.matches.delete(id);
   }
   closeMatch(id: string, endedAt: string, scores: { accountId: string; score: number }[]) {
     const m = this.matches.get(id);
@@ -256,6 +282,27 @@ describe('historique des parties en ligne', () => {
       ['Alice', 90],
       ['Carol', 120],
     ]);
+  });
+
+  it('suit l’avancement d’une partie en cours', () => {
+    const { social } = setup();
+    social.startGame('m1', 'ABCD12', ['a', 'b'], 'a', 28);
+    expect(social.listMatches('a')[0]).toMatchObject({ ownerId: 'a', manches: 0, totalManches: 28 });
+    social.progressGame('m1', 7);
+    expect(social.listMatches('b')[0]!.manches).toBe(7);
+    // Partie inconnue : sans effet, et surtout pas de ligne fantôme créée.
+    social.progressGame('inconnue', 3);
+    expect(social.listMatches('a')).toHaveLength(1);
+  });
+
+  it('seul le créateur supprime une partie, et pour tout le monde', () => {
+    const { social } = setup();
+    social.startGame('m1', 'ABCD12', ['a', 'b'], 'a', 28);
+    expect(() => social.deleteMatch('b', 'm1')).toThrow(/créateur/i);
+    expect(() => social.deleteMatch('a', 'inconnue')).toThrow(SocialError);
+    expect(social.deleteMatch('a', 'm1')).toEqual({ ok: true });
+    expect(social.listMatches('a')).toEqual([]);
+    expect(social.listMatches('b')).toEqual([]);
   });
 
   it('ignore les tables de moins de 2 comptes réels', () => {

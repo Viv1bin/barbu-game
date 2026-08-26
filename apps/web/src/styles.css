@@ -224,12 +224,17 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
    bouton par salle encore ouverte (l'onglet Amis ne garde que les parties finies). */
 .resumepanel { width: 100%; }
 .resumerow {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  padding: 8px 0; border-top: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 10px 0; border-top: 1px solid var(--border);
 }
 .resumerow:first-of-type { border-top: none; }
-.resumewho { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; }
-.resumerow button { margin-left: auto; }
+.resumemeta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.resumeprog {
+  font-size: .74rem; font-weight: 650; color: var(--accent);
+  background: var(--accent-soft); border-radius: 999px; padding: 2px 8px;
+}
+.resumewho { display: flex; flex-wrap: wrap; gap: 6px; }
+.resumeactions { display: flex; gap: 8px; justify-content: flex-end; }
 
 /* Avatar cliquable (salon) : bouton nu, l'avatar garde son rendu. */
 .avatartap { padding: 0; border: 0; background: none; border-radius: 999px; cursor: pointer; }
@@ -287,6 +292,9 @@ button.hinted { outline: 2px solid var(--accent); outline-offset: 2px; opacity: 
 }
 .pcard.sm { width: 34px; height: 48px; border-radius: 6px; }
 .pcard.sm .corner { font-size: .6rem; } .pcard.sm .pip { font-size: 1.1rem; }
+/* À cette taille le symbole du coin chevauche le rang : on le retire, la carte
+   est vue en entier (réussite, tri, révélation) donc le symbole central suffit. */
+.pcard.sm .csuit { display: none; }
 .pcard.md { width: 58px; height: 82px; border-radius: 10px; }
 .pcard.md .corner { font-size: .82rem; } .pcard.md .pip { font-size: 2.1rem; }
 .pcard.lg { width: 70px; height: 98px; border-radius: 12px; }
