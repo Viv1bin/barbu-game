@@ -64,6 +64,8 @@ export interface RoomSnapshot {
   v: 1;
   /** Sièges sans `connId` : toutes les connexions sont mortes à la restauration. */
   seats: Omit<Seat, 'connId'>[];
+  /** Créateur de la salle. Absent des instantanés v1 d'avant la propriété. */
+  ownerId?: string | null;
   hostId: string | null;
   started: boolean;
   paused: boolean;
@@ -110,6 +112,13 @@ export interface RoomHost {
  */
 export class GameRoom {
   seats: Seat[] = SEATS.map(() => ({ kind: 'open', level: DEFAULT_LEVEL }));
+  /**
+   * Créateur de la salle : propriétaire définitif. Distinct de `hostId`, qui est
+   * l'hôte *effectif* — le rôle passe temporairement à un autre joueur quand le
+   * créateur n'est pas connecté, sinon une salle qu'il a quittée serait bloquée.
+   * Il le récupère automatiquement dès qu'il revient.
+   */
+  ownerId: string | null = null;
   hostId: string | null = null;
   match: MatchState | null = null;
   history: MancheLog[] = [];
@@ -144,6 +153,9 @@ export class GameRoom {
 
   private restore(snap: RoomSnapshot) {
     this.seats = snap.seats.map((s) => ({ ...s })); // connId absent : personne n'est connecté
+    // Instantané écrit avant la notion de propriétaire : l'hôte enregistré en
+    // tenait lieu, on le promeut plutôt que de laisser la salle sans créateur.
+    this.ownerId = snap.ownerId ?? snap.hostId;
     this.hostId = snap.hostId;
     this.started = snap.started;
     this.paused = snap.paused;
@@ -158,6 +170,7 @@ export class GameRoom {
     return {
       v: 1,
       seats: this.seats.map(({ connId: _connId, ...rest }) => rest),
+      ownerId: this.ownerId,
       hostId: this.hostId,
       started: this.started,
       paused: this.paused,
@@ -226,7 +239,11 @@ export class GameRoom {
     const account = token ? await this.room.resolveAccount(token) : null;
     if (!account) return this.sendError(sender, 'Session expirée : reconnecte-toi.');
 
-    if (this.hostId === null) this.hostId = account.id;
+    // Le premier arrivé crée la salle et en reste le propriétaire. S'il revient
+    // après une coupure, il reprend la main : sans ça, un simple retour au menu
+    // ou un écran verrouillé lui faisait perdre l'administration pour de bon.
+    if (this.ownerId === null) this.ownerId = account.id;
+    if (this.hostId === null || account.id === this.ownerId) this.hostId = account.id;
 
     // Reconnexion : un siège porte déjà ce compte → on réattache la connexion.
     const existing = this.seats.findIndex((s) => s.profileId === account.id);
@@ -260,7 +277,10 @@ export class GameRoom {
   private handleSeat(sender: Conn, msg: Extract<ClientMsg, { t: 'SEAT' }>) {
     if (!this.isHost(sender) || this.started) return this.sendError(sender, 'Action réservée à l\'hôte, avant le début.');
     const seat = this.seats[msg.seat];
-    if (!seat || seat.kind === 'human') return this.sendError(sender, 'Siège occupé par un joueur.');
+    // Un siège humain **connecté** est intouchable ; s'il est déconnecté, l'hôte
+    // peut le libérer ou y mettre un bot — sinon un joueur parti avant le début
+    // bloquerait la salle, faute de siège « ouvert » à remplir.
+    if (!seat || (seat.kind === 'human' && seat.connId)) return this.sendError(sender, 'Siège occupé par un joueur.');
     if (msg.kind === 'bot') {
       this.seats[msg.seat] = { kind: 'bot', name: `Bot ${msg.seat + 1}`, avatar: 'bot', level: msg.level ?? DEFAULT_LEVEL };
     } else {
@@ -513,21 +533,24 @@ export class GameRoom {
     if (seat === null) return;
     this.seats[seat]!.connId = undefined;
     this.asks = this.asks.filter((p) => p !== seat);
-    if (!this.started) {
-      // Avant le début : le siège se libère complètement.
-      this.seats[seat] = { kind: 'open', level: DEFAULT_LEVEL };
-    }
+    // Le siège reste au compte, y compris dans le salon : une coupure d'une
+    // seconde ne doit pas coûter sa place. C'est l'hôte qui libère un siège
+    // resté vide (`SEAT`), personne d'autre.
     // L'hôte s'en va : sans passation, plus personne ne pourrait reprendre la
     // partie ni remplacer un absent. On transmet au premier humain connecté.
-    if (this.seats[seat]!.profileId === this.hostId || !this.started) this.migrateHost();
+    if (this.seats[seat]!.profileId === this.hostId) this.migrateHost();
     this.broadcast();
   }
 
-  /** Transfère le rôle d'hôte si son titulaire n'est plus connecté. */
+  /**
+   * Transfère le rôle d'hôte si son titulaire n'est plus connecté : intérim, pas
+   * dépossession — le créateur le reprend à son prochain JOIN.
+   */
   private migrateHost() {
     const holder = this.seats.find((s) => s.profileId === this.hostId);
     if (holder?.connId) return; // l'hôte est encore là
-    const next = this.seats.find((s) => s.kind === 'human' && s.connId && s.profileId);
+    const owner = this.seats.find((s) => s.profileId === this.ownerId && s.connId);
+    const next = owner ?? this.seats.find((s) => s.kind === 'human' && s.connId && s.profileId);
     if (next) this.hostId = next.profileId!;
   }
 

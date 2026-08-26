@@ -185,6 +185,37 @@ describe('serveur en ligne', () => {
     return { room, server, host, other };
   }
 
+  it('le créateur reste administrateur après un aller-retour dans le salon', async () => {
+    // Régression : un simple retour au menu (ou un écran verrouillé) transférait
+    // le rôle d'hôte au voisin, définitivement, et libérait le siège du créateur.
+    const room = new FakeRoom();
+    const server = new GameRoom(room);
+    const owner = new FakeConn('h');
+    const other = new FakeConn('o');
+    room.conns.push(owner, other);
+    server.onMessage(msg({ t: 'JOIN', token: 'tok-host' }), owner);
+    server.onMessage(msg({ t: 'JOIN', token: 'tok-other' }), other);
+    await flush();
+    expect(server.hostId).toBe('p-host');
+
+    server.onClose(owner);
+    await flush();
+    // Intérim le temps de l'absence, mais le siège reste réservé au créateur.
+    expect(server.hostId).toBe('p-other');
+    expect(server.seats[0]!.kind).toBe('human');
+    expect(server.seats[0]!.profileId).toBe('p-host');
+
+    const back = new FakeConn('h2');
+    room.conns.push(back);
+    server.onMessage(msg({ t: 'JOIN', token: 'tok-host' }), back);
+    await flush();
+
+    expect(server.hostId).toBe('p-host');
+    server.onMessage(msg({ t: 'SEAT', seat: 2, kind: 'bot', level: 'facile' }), back);
+    await flush();
+    expect(server.seats[2]!.kind).toBe('bot');
+  });
+
   it('un joueur déconnecté n\'est pas remplacé par un bot : la partie se suspend', async () => {
     const { server, host } = await startedRoom();
     server.onClose(host);

@@ -213,17 +213,10 @@ function RoomBanner({ view, room }: { view: TableView; room: RoomControl }) {
         <span>
           <Icon name="warning" size={16} />
           Partie suspendue — {room.absent.map(name).join(', ')} {room.absent.length > 1 ? 'sont partis' : 'est parti'}.
-          {room.isHost ? ' Attends son retour, ou confie son siège à un bot.' : " L'hôte peut le remplacer par un bot."}
+          {room.isHost
+            ? ' Attends son retour, ou remplace-le par un bot depuis sa place.'
+            : " L'hôte peut le remplacer par un bot."}
         </span>
-        {room.isHost && (
-          <span className="rb-actions">
-            {room.absent.map((p) => (
-              <button key={p} className="tiny" onClick={() => room.fillBot(p)}>
-                <Icon name="bot" size={14} />Bot à la place de {name(p)}
-              </button>
-            ))}
-          </span>
-        )}
       </div>
     );
   }
@@ -407,6 +400,18 @@ function PokerTable({ view }: { view: TableView }) {
             <div className="scards"><b>{handSizes[p] ?? 0}</b> cartes</div>
           </div>
           {state.contres.includes(p as PlayerId) && <div className="ctag">contre</div>}
+          {/* Le siège d'un absent porte lui-même la décision : c'est là qu'on le
+              cherche, plutôt que dans un bandeau à l'écart de la table. */}
+          {view.room?.absent.includes(p as PlayerId) && (
+            <div className="sgone">
+              <span className="gonetag">parti</span>
+              {view.room.isHost && (
+                <button className="tiny" onClick={() => view.room!.fillBot(p as PlayerId)}>
+                  <Icon name="bot" size={13} />Bot à sa place
+                </button>
+              )}
+            </div>
+          )}
         </div>
       ))}
       <div className="table-center">
@@ -634,7 +639,9 @@ function HumanDock({ view }: { view: TableView }) {
           const off = i - (n - 1) / 2;
           const style = {
             '--off': off,
-            '--lift': `${Math.abs(off) * 5}px`,
+            // Descente quadratique : la main suit un arc de cercle plutôt qu'un
+            // simple V, les cartes des bords plongent comme dans une vraie main.
+            '--lift': `${off * off * 1.3}px`,
             zIndex: i,
           } as CSSProperties;
           return (
