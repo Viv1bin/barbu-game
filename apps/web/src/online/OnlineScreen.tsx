@@ -116,6 +116,7 @@ function OnlineRoom({ code, me, onLeave, onMenu }: { code: string; me: OnlineIde
   if (!game.started || !game.view) return <OnlineLobby game={game} code={code} onBack={onLeave} />;
 
   const view = game.view;
+  const halted = game.halt.paused || game.halt.absent.length > 0;
   const seats: SeatLabel[] = [0, 1, 2, 3].map((i) => {
     const s = game.seats[i];
     return {
@@ -134,7 +135,9 @@ function OnlineRoom({ code, me, onLeave, onMenu }: { code: string; me: OnlineIde
     pause: game.pause,
     hint: null,
     actor: currentActor(view),
-    busy: game.pause !== null,
+    // Une partie suspendue (pause de l'hôte, joueur absent) n'accepte plus
+    // aucun coup côté serveur : on grise la main en conséquence.
+    busy: game.pause !== null || halted,
     actions: {
       chooseContract: game.chooseContract,
       respondContre: game.respondContre,
@@ -144,6 +147,16 @@ function OnlineRoom({ code, me, onLeave, onMenu }: { code: string; me: OnlineIde
     },
     lastDeal: null,
     onNewGame: game.isHost && view.phase === 'DONE' ? game.newGame : undefined,
+    room: {
+      isHost: game.isHost,
+      paused: game.halt.paused,
+      absent: game.halt.absent,
+      asks: game.halt.asks,
+      setPaused: game.setPaused,
+      askPause: game.askPause,
+      denyPause: game.denyPause,
+      fillBot: game.fillBot,
+    },
   };
 
   return <GameTable view={table} title={`en ligne · ${code}`} onBack={onMenu} />;

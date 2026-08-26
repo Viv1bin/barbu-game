@@ -52,7 +52,11 @@ export function OnlineLobby({ game, code, onBack }: { game: OnlineGame; code: st
           ))}
         </div>
 
-        {isHost ? (
+        {/* Partie déjà lancée : on reprend là où elle en était, sans repasser
+            par la configuration — les sièges et les bots sont déjà fixés. */}
+        {game.started ? (
+          <p className="muted">Reprise de la partie en cours…</p>
+        ) : isHost ? (
           <>
             <p className="muted">Tu es l'hôte. Remplis chaque siège vide (place ouverte pour un ami, ou un bot), règle les options, puis lance la partie.</p>
 

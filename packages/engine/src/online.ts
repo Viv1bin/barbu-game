@@ -110,6 +110,21 @@ export interface SeatInfo {
   connected?: boolean;
 }
 
+/**
+ * Suspension d'une partie en ligne. Deux causes indépendantes, cumulables :
+ * l'hôte a mis en pause, ou un siège humain est déconnecté. Dans les deux cas
+ * la partie ne peut pas avancer — un absent n'est **jamais** remplacé par un
+ * bot automatiquement, seul l'hôte peut le décider (`FILL_BOT`).
+ */
+export interface RoomHalt {
+  /** Pause décidée par l'hôte. */
+  paused: boolean;
+  /** Sièges humains sans connexion active. */
+  absent: PlayerId[];
+  /** Joueurs ayant demandé une pause ; à l'hôte de confirmer. */
+  asks: PlayerId[];
+}
+
 /** Pli complet figé le temps de l'animation (rejoue l'anim du solo). */
 export interface TrickPause {
   trick: PlayedCard[];
@@ -135,6 +150,14 @@ export type ClientMsg =
   | { t: 'START'; options?: MatchOptions }
   | { t: 'ACTION'; action: Action }
   | { t: 'NEW_GAME' }
+  // Administration de la partie : réservée à l'hôte (le créateur de la salle).
+  | { t: 'PAUSE' }
+  | { t: 'RESUME' }
+  /** Remplace un siège humain déconnecté par un bot (décision de l'hôte seul). */
+  | { t: 'FILL_BOT'; seat: PlayerId; level?: Difficulty }
+  /** Demande de pause d'un joueur : l'hôte confirme (PAUSE) ou refuse (DENY_PAUSE). */
+  | { t: 'ASK_PAUSE' }
+  | { t: 'DENY_PAUSE' }
   | { t: 'LEAVE' };
 
 /** Messages serveur → client. */
@@ -148,13 +171,17 @@ export type ServerMsg =
       started: boolean;
       /** Options avec lesquelles la partie a démarré (ou démarrera par défaut). */
       options: MatchOptions;
+      halt: RoomHalt;
     }
   | {
       t: 'VIEW';
       view: RedactedMatchState;
       seats: SeatInfo[];
       youSeat: PlayerId | null;
+      /** Répété ici : en cours de partie le client ne reçoit plus de LOBBY. */
+      hostId: string | null;
       history: MancheLog[];
       pause: TrickPause | null;
+      halt: RoomHalt;
     }
   | { t: 'ERROR'; msg: string };

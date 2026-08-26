@@ -61,6 +61,25 @@ export interface TableActions {
   reussitePass: () => void;
 }
 
+/**
+ * Administration d'une partie en ligne. Le créateur de la salle en est l'hôte :
+ * lui seul met en pause, reprend, et décide de confier à un bot le siège d'un
+ * joueur parti. Les autres peuvent seulement *demander* une pause.
+ */
+export interface RoomControl {
+  isHost: boolean;
+  /** Pause décidée par l'hôte. */
+  paused: boolean;
+  /** Sièges humains déconnectés : la partie est suspendue tant qu'ils manquent. */
+  absent: PlayerId[];
+  /** Demandes de pause en attente de la décision de l'hôte. */
+  asks: PlayerId[];
+  setPaused: (paused: boolean) => void;
+  askPause: () => void;
+  denyPause: () => void;
+  fillBot: (seat: PlayerId) => void;
+}
+
 export interface TableView {
   /** État public (solo : MatchState ; en ligne : RedactedMatchState, compatible). */
   state: MatchState;
@@ -85,6 +104,8 @@ export interface TableView {
   lastDeal: Card[][] | null;
   /** Relance une partie (solo : toujours ; en ligne : hôte uniquement). */
   onNewGame?: () => void;
+  /** Contrôles de salle (mode en ligne uniquement ; absent en solo). */
+  room?: RoomControl;
 }
 
 const SUIT_ORDER: Suit[] = ['S', 'H', 'C', 'D'];
@@ -138,10 +159,12 @@ export function GameTable({
           <span>Manche {Math.min(state.mancheCount + 1, 28)}/28</span>
           <span>Contrat : {state.currentContract ? CONTRACT_LABEL[state.currentContract] : '—'}</span>
           <button className="ghost" onClick={() => setShowScores(true)}><Icon name="chart" size={16} />Scores</button>
+          {view.room && !done && <PauseButton room={view.room} />}
         </div>
       </header>
 
       <PokerTable view={view} />
+      {view.room && !done && <RoomBanner view={view} room={view.room} />}
       {choosing && <ContractBar view={view} />}
       <HumanDock view={view} />
       {showScores && <ScoresModal view={view} onClose={() => setShowScores(false)} />}
@@ -154,6 +177,83 @@ export function GameTable({
       )}
     </div>
   );
+}
+
+/** Bouton d'en-tête : pause/reprise pour l'hôte, simple demande pour les autres. */
+function PauseButton({ room }: { room: RoomControl }) {
+  if (room.isHost) {
+    return (
+      <button className="ghost" onClick={() => room.setPaused(!room.paused)}>
+        <Icon name={room.paused ? 'play' : 'pause'} size={16} />
+        {room.paused ? 'Reprendre' : 'Pause'}
+      </button>
+    );
+  }
+  if (room.paused) return <span className="pausetag">en pause</span>;
+  return (
+    <button className="ghost" onClick={room.askPause} disabled={room.asks.length > 0}>
+      <Icon name="pause" size={16} />{room.asks.length > 0 ? 'Pause demandée' : 'Demander une pause'}
+    </button>
+  );
+}
+
+/**
+ * Bandeau d'état de la salle : pause de l'hôte, joueur absent (la partie
+ * s'arrête, elle ne passe **pas** en pilote automatique), demande de pause en
+ * attente. Les boutons de décision n'apparaissent que chez l'hôte.
+ */
+function RoomBanner({ view, room }: { view: TableView; room: RoomControl }) {
+  const { seats } = view;
+  const name = (p: PlayerId) => seats[p]?.name ?? `Siège ${p + 1}`;
+  const asks = room.asks.filter((p) => p !== view.you);
+
+  if (room.absent.length > 0) {
+    return (
+      <div className="roombanner warn">
+        <span>
+          <Icon name="warning" size={16} />
+          Partie suspendue — {room.absent.map(name).join(', ')} {room.absent.length > 1 ? 'sont partis' : 'est parti'}.
+          {room.isHost ? ' Attends son retour, ou confie son siège à un bot.' : " L'hôte peut le remplacer par un bot."}
+        </span>
+        {room.isHost && (
+          <span className="rb-actions">
+            {room.absent.map((p) => (
+              <button key={p} className="tiny" onClick={() => room.fillBot(p)}>
+                <Icon name="bot" size={14} />Bot à la place de {name(p)}
+              </button>
+            ))}
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  if (room.paused) {
+    return (
+      <div className="roombanner">
+        <span><Icon name="pause" size={16} />Partie en pause{room.isHost ? '' : " — l'hôte doit la relancer"}.</span>
+        {room.isHost && (
+          <span className="rb-actions">
+            <button className="tiny" onClick={() => room.setPaused(false)}><Icon name="play" size={14} />Reprendre</button>
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  if (asks.length > 0 && room.isHost) {
+    return (
+      <div className="roombanner">
+        <span><Icon name="pause" size={16} />{asks.map(name).join(', ')} demande une pause.</span>
+        <span className="rb-actions">
+          <button className="tiny" onClick={() => room.setPaused(true)}>Accepter</button>
+          <button className="ghost tiny" onClick={room.denyPause}>Refuser</button>
+        </span>
+      </div>
+    );
+  }
+
+  return null;
 }
 
 /** Popup à la sortie d'une partie solo : garder (reprendre plus tard) ou supprimer. */
@@ -523,13 +623,17 @@ function HumanDock({ view }: { view: TableView }) {
           <button className={`pass ${hintPass ? 'hinted' : ''}`} onClick={actions.reussitePass}>Passer</button>
         )}
       </div>
-      <div className="hand fan">
+      {/* `--n` sert au calcul CSS du chevauchement : l'éventail occupe toute la
+          largeur disponible, quel que soit le nombre de cartes restantes. */}
+      <div className="hand fan" style={{ '--n': Math.max(n, 2) } as CSSProperties}>
         {cards.map((card, i) => {
           const legal = legalIds.has(cardId(card));
           const hinted = myTurn && cardId(card) === hintCardId;
+          // L'angle de l'éventail est un facteur CSS (`--fanrot`) : il se réduit
+          // sur écran étroit, où la rotation coûte de la largeur utile.
           const off = i - (n - 1) / 2;
           const style = {
-            '--rot': `${off * 3}deg`,
+            '--off': off,
             '--lift': `${Math.abs(off) * 5}px`,
             zIndex: i,
           } as CSSProperties;

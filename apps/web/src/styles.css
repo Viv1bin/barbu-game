@@ -263,11 +263,11 @@ button.hinted { outline: 2px solid var(--accent); outline-offset: 2px; opacity: 
   background: repeating-linear-gradient(45deg, var(--surface-3) 0 6px, var(--surface-2) 6px 12px);
   border-color: var(--border-strong);
 }
-.pcard.sm { width: 34px; height: 48px; border-radius: 5px; }
+.pcard.sm { width: 34px; height: 48px; border-radius: 6px; }
 .pcard.sm .corner { font-size: .6rem; } .pcard.sm .pip { font-size: 1.1rem; }
-.pcard.md { width: 58px; height: 82px; }
+.pcard.md { width: 58px; height: 82px; border-radius: 10px; }
 .pcard.md .corner { font-size: .82rem; } .pcard.md .pip { font-size: 2.1rem; }
-.pcard.lg { width: 70px; height: 98px; border-radius: 9px; }
+.pcard.lg { width: 70px; height: 98px; border-radius: 12px; }
 .pcard.lg .corner { font-size: .95rem; } .pcard.lg .pip { font-size: 2.6rem; }
 
 /* --- Main du joueur ------------------------------------------------------- */
@@ -276,19 +276,66 @@ footer { border-top: 1px solid var(--border); padding-top: 10px; }
 .handbar { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 6px; }
 .handlabel { font-size: .82rem; color: var(--muted); }
 .hand { display: flex; justify-content: center; align-items: flex-end; min-height: 104px; padding-top: 22px; }
-.hand.fan { gap: 0; }
+/*
+ * Éventail dimensionné par la largeur réellement disponible plutôt que par un
+ * chevauchement fixe : sur un écran étroit, un décalage constant écrasait les
+ * cartes les unes sur les autres alors qu'il restait de la place.
+ *
+ * `--cw` = largeur d'une carte, `--n` = nombre de cartes (posé par le JSX).
+ * Le chevauchement `--ov` est la moitié du débordement à résorber, borné :
+ *   - au moins 4 px, pour que l'éventail reste un éventail quand il y a de la place ;
+ *   - au plus 62 % de la carte, pour qu'il reste toujours un rang lisible.
+ * `--fan-inset` réserve ce que la rotation des cartes extrêmes fait dépasser de
+ * leur boîte (sans lui, les deux cartes des bords sortent de l'écran).
+ * `container-type` fait de `.hand` le référent de `100cqw`.
+ */
+.hand.fan {
+  gap: 0;
+  container-type: inline-size;
+  --cw: 62px;
+  --fanrot: 3deg;
+  --fan-inset: 52px;
+  --ov: clamp(
+    4px,
+    calc((var(--cw) * var(--n, 13) - (100cqw - var(--fan-inset))) / ((var(--n, 13) - 1) * 2)),
+    calc(var(--cw) * .62)
+  );
+}
+.hand.fan .pcard {
+  width: var(--cw); height: calc(var(--cw) * 1.41); border-radius: calc(var(--cw) * .17);
+}
+.hand.fan .pcard .pip { font-size: calc(var(--cw) * .40); }
+.hand.fan .pcard .corner { font-size: calc(var(--cw) * .19); }
 .handcard {
-  background: none; border: none; padding: 0; margin: 0 -12px; border-radius: 8px;
-  transform-origin: bottom center; transform: rotate(var(--rot, 0deg)) translateY(var(--lift, 0px));
+  background: none; border: none; padding: 0; margin: 0 calc(-1 * var(--ov)); border-radius: 8px;
+  transform-origin: bottom center;
+  transform: rotate(calc(var(--off, 0) * var(--fanrot, 3deg))) translateY(var(--lift, 0px));
   transition: transform .12s ease, filter .12s ease; cursor: pointer;
 }
 .handcard .pcard { display: block; box-shadow: var(--shadow-2); }
 .handcard:not(:disabled):hover { transform: translateY(-16px) rotate(0deg) scale(1.04); z-index: 200 !important; }
 .handcard.playable .pcard { border-color: var(--muted); }
 .handcard.faded { filter: grayscale(.4) opacity(.55); }
-.handcard.faded:not(:disabled):hover, .handcard:disabled { transform: rotate(var(--rot, 0deg)) translateY(var(--lift, 0px)); }
+.handcard.faded:not(:disabled):hover, .handcard:disabled {
+  transform: rotate(calc(var(--off, 0) * var(--fanrot, 3deg))) translateY(var(--lift, 0px));
+}
 /* Une carte désactivée reste pleinement visible : seul `.faded` assombrit. */
 .handcard:disabled { cursor: default; opacity: 1; }
+
+/* --- Bandeau d'état d'une salle en ligne (pause, absent, demande) --------- */
+.roombanner {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 14px;
+  width: 100%; margin: -10px auto 4px; padding: 9px 12px;
+  background: var(--accent-soft); border: 1px solid var(--border-strong); border-radius: var(--r-md);
+  font-size: .86rem; line-height: 1.45;
+}
+.roombanner > span { display: inline-flex; align-items: center; gap: 7px; }
+.roombanner.warn { border-color: var(--card-red); }
+.rb-actions { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.pausetag {
+  font-size: .8rem; color: var(--muted); border: 1px solid var(--border);
+  border-radius: 999px; padding: 3px 10px;
+}
 
 /* --- Table de jeu --------------------------------------------------------- */
 .app.solo { max-width: 860px; }
@@ -772,13 +819,18 @@ footer { border-top: 1px solid var(--border); padding-top: 10px; }
   /* Le contenu central descend d'autant : même une annonce haute (le pli, la
      question du contre) reste sous les sièges latéraux. */
   .table-center { top: 54%; }
-  .pcard.md { width: 50px; height: 71px; }
-  .pcard.md .pip { font-size: 1.8rem; }
-  .pcard.md .corner { font-size: .72rem; }
   .pcard.lg { width: 60px; height: 84px; }
   .pcard.lg .pip { font-size: 2.1rem; }
   .thrown { margin: -42px 0 0 -30px; }
-  .handcard { margin: 0 -15px; }
+
+  /* On gratte la marge horizontale de la page : chaque pixel gagné va dans
+     l'éventail, qui se calcule sur la largeur disponible. Les cartes de la main
+     restent donc grandes au lieu de rétrécir avec l'écran. */
+  .app.solo { padding: 20px 6px; }
+  /* Éventail moins ouvert : chaque degré de rotation coûte de la largeur aux
+     deux cartes des bords, largeur qui manque ensuite au reste de la main. */
+  .hand.fan { --cw: 64px; --fanrot: 2deg; --fan-inset: 38px; }
+
   .statgrid { grid-template-columns: repeat(2, 1fr); }
   .topbar > button:first-child { position: static; }
   .topbar { justify-content: flex-start; }
