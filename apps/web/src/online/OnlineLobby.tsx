@@ -114,9 +114,13 @@ function SeatSlot({
         </>
       )}
 
-      {isHost && seat.kind !== 'human' && (
+      {/* Le siège d'un joueur déconnecté lui reste réservé : seul l'hôte peut le
+          libérer, sinon une coupure d'une seconde coûterait sa place. */}
+      {isHost && (seat.kind !== 'human' || seat.connected === false) && (
         <div className="btnrow tight">
-          {seat.kind === 'open' ? (
+          {seat.kind === 'human' ? (
+            <button className="ghost tiny" onClick={() => onConfigure(seat.seat, 'open')}>Libérer la place</button>
+          ) : seat.kind === 'open' ? (
             <button className="ghost tiny" onClick={() => onConfigure(seat.seat, 'bot', 'difficile')}><Icon name="plus" size={15} />Bot</button>
           ) : (
             <>
