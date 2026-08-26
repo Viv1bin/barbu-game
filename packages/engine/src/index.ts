@@ -7,6 +7,7 @@ export * from './contre.js';
 export * from './trickRound.js';
 export * from './reussiteRound.js';
 export * from './bots.js';
+export * from './options.js';
 export * from './match.js';
 export * from './online.js';
 export * from './roomCode.js';

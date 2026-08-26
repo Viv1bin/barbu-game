@@ -1,4 +1,5 @@
 // Types de base du moteur Barbu — voir regles.md
+import type { MatchOptions } from './options.js';
 
 export type Suit = 'H' | 'S' | 'D' | 'C'; // Cœur, Pique (Spades), Carreau (Diamonds), Trèfle (Clubs)
 
@@ -68,6 +69,8 @@ export type MatchPhase =
   | 'DONE';
 
 export interface MatchState {
+  /** Règles choisies à la création (contrats en jeu, contre, donneur). */
+  options: MatchOptions;
   dealer: PlayerId;
   /** playedContracts[playerId] = contrats déjà donnés par ce joueur. */
   playedContracts: ContractId[][];
@@ -79,7 +82,7 @@ export interface MatchState {
   contreDecided: PlayerId[]; // joueurs ayant déjà répondu au contre (dans l'ordre)
   round: RoundState | null;
   scores: number[]; // cumul des 4 joueurs
-  mancheCount: number; // manches terminées (0..28)
+  mancheCount: number; // manches terminées (0..totalManches(options))
 }
 
 export type Action =

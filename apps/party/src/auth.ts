@@ -36,6 +36,8 @@ export interface AuthDB {
   findById(id: string): AccountRow | undefined;
   insertAccount(row: AccountRow): void;
   updateAccount(row: AccountRow): void;
+  /** Supprime définitivement un compte (ses sessions sont purgées à part). */
+  deleteAccount(id: string): void;
   insertSession(row: SessionRow): void;
   findSession(token: string): SessionRow | undefined;
   deleteSession(token: string): void;
@@ -319,6 +321,31 @@ export class AuthLogic {
     this.db.deleteSessionsForAccount(row.id, token ?? undefined);
     this.limiter.reset(`pw:${row.id}:${ip}`);
     return { ok: true };
+  }
+
+  /**
+   * Supprime le compte, après confirmation par le mot de passe : un token volé
+   * ne doit pas suffire à effacer le compte de quelqu'un. Renvoie l'id supprimé
+   * pour que l'appelant purge aussi les données sociales.
+   */
+  async deleteAccount(token: string | null, input: { password?: unknown }, ip = 'inconnue'): Promise<{ id: string }> {
+    const row = this.rowForToken(token);
+    if (!row) throw new AuthError('Session expirée.', 401);
+
+    this.limiter.consume(
+      `del:${row.id}:${ip}`,
+      LIMITS.loginPerPseudo.max,
+      LIMITS.loginPerPseudo.windowMs,
+      'Trop de tentatives. Réessaie dans quelques minutes.',
+    );
+    const password = typeof input.password === 'string' ? input.password : '';
+    const hash = await hashPassword(password, row.salt);
+    if (!constantTimeEqual(hash, row.hash)) throw new AuthError('Mot de passe incorrect.', 401);
+
+    this.db.deleteSessionsForAccount(row.id);
+    this.db.deleteAccount(row.id);
+    this.limiter.reset(`del:${row.id}:${ip}`);
+    return { id: row.id };
   }
 
   logout(token: string | null): void {

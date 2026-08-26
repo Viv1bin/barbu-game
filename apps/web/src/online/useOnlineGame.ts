@@ -6,6 +6,7 @@ import type {
   ContractId,
   Difficulty,
   MancheLog,
+  MatchOptions,
   PlayerId,
   Rank,
   RedactedMatchState,
@@ -32,7 +33,7 @@ export interface OnlineGame {
   pause: UiPause | null;
   // Actions lobby (hôte)
   configureSeat: (seat: PlayerId, kind: 'open' | 'bot', level?: Difficulty) => void;
-  startMatch: () => void;
+  startMatch: (options: MatchOptions) => void;
   newGame: () => void;
   // Actions de jeu
   chooseContract: (contract: ContractId, rank?: Rank) => void;
@@ -145,7 +146,7 @@ export function useOnlineGame(code: string, me: OnlineIdentity): OnlineGame {
     history,
     pause,
     configureSeat: (seat, kind, level) => send({ t: 'SEAT', seat, kind, level }),
-    startMatch: () => send({ t: 'START' }),
+    startMatch: (options) => send({ t: 'START', options }),
     newGame: () => send({ t: 'NEW_GAME' }),
     chooseContract: (contract, rank) => send({ t: 'ACTION', action: { t: 'CHOOSE_CONTRACT', contract, rank } }),
     respondContre: (contre) =>

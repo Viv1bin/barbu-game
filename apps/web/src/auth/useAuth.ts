@@ -17,6 +17,8 @@ export interface Auth {
   updateProfile: (patch: { pseudo?: string; avatar?: string }) => Promise<void>;
   /** Change le mot de passe ; toutes les autres sessions sont révoquées. */
   changePassword: (current: string, next: string) => Promise<void>;
+  /** Supprime définitivement le compte (mot de passe exigé par le serveur). */
+  deleteAccount: (password: string) => Promise<void>;
 }
 
 function loadToken(): string | null {
@@ -105,7 +107,19 @@ export function useAuth(): Auth {
     [token],
   );
 
-  return { account, token, loading, register, login, logout, updateProfile, changePassword };
+  const deleteAccount = useCallback(
+    async (password: string) => {
+      await apiFetch<{ ok: true }>('/auth/delete', { token, body: { password } });
+      // Le compte n'existe plus : on efface l'identité locale sans repasser par
+      // /auth/logout, dont la session vient déjà d'être supprimée côté serveur.
+      saveToken(null);
+      setToken(null);
+      setAccount(null);
+    },
+    [token],
+  );
+
+  return { account, token, loading, register, login, logout, updateProfile, changePassword, deleteAccount };
 }
 
 export { ApiError };

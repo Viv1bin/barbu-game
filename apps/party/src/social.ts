@@ -5,6 +5,7 @@
 import type {
   FriendRequestInfo,
   GameResultEntry,
+  OnlineMatch,
   PlayerStats,
   PublicProfile,
   SavedGame,
@@ -22,6 +23,18 @@ const ONLINE_WINDOW_MS = 70_000;
 export const MAX_SAVED_GAME_BYTES = 64 * 1024;
 
 // --- Modèle de stockage --------------------------------------------------
+
+/** Nombre de parties en ligne conservées par compte dans l'historique. */
+export const MATCH_HISTORY_LIMIT = 25;
+
+/** Une partie en ligne telle que persistée (identités non résolues). */
+export interface MatchRow {
+  id: string;
+  code: string;
+  startedAt: string;
+  endedAt: string | null;
+  players: { accountId: string; score: number | null }[];
+}
 
 /** Ligne de stats telle que persistée. */
 export interface StatsRow {
@@ -59,10 +72,20 @@ export interface SocialDB {
   putSavedGame(accountId: string, gameId: string, state: unknown): void;
   deleteSavedGame(accountId: string, gameId: string): void;
 
+  /** Ouvre (ou réécrit) une partie en ligne avec ses participants, scores inconnus. */
+  openMatch(id: string, code: string, startedAt: string, accountIds: string[]): void;
+  /** Clôt une partie en ligne : date de fin + score de chaque participant. */
+  closeMatch(id: string, endedAt: string, scores: GameResultEntry[]): void;
+  /** Parties en ligne où `accountId` a joué, plus récente d'abord. */
+  listMatches(accountId: string, limit: number): MatchRow[];
+
   /** Marque `id` comme actif « maintenant ». */
   touchPresence(id: string): void;
   /** Dernière activité de `id` (epoch ms), ou undefined si jamais vu. */
   presence(id: string): number | undefined;
+
+  /** Efface toutes les données sociales d'un compte (suppression de compte). */
+  purgeAccount(id: string): void;
 }
 
 /** Erreur métier : message affichable + code HTTP. */
@@ -213,9 +236,10 @@ export class SocialLogic {
    * réels ; il en faut au moins deux (sinon partie « solo » face à des bots →
    * ignorée). Le(s) plus bas score = gagnant(s).
    */
-  recordGame(entries: GameResultEntry[]): { recorded: boolean } {
+  recordGame(matchId: string, entries: GameResultEntry[]): { recorded: boolean } {
     const valid = entries.filter((e) => e.accountId && this.db.findById(e.accountId));
     if (valid.length < 2) return { recorded: false };
+    this.db.closeMatch(matchId, new Date(this.now()).toISOString(), valid);
     const best = Math.min(...valid.map((e) => e.score));
     for (const e of valid) {
       const cur = this.db.stats(e.accountId) ?? { accountId: e.accountId, games: 0, wins: 0, totalPoints: 0, bestScore: null };
@@ -228,5 +252,40 @@ export class SocialLogic {
       });
     }
     return { recorded: true };
+  }
+
+  /**
+   * Ouvre une partie en ligne dans l'historique. Comme `recordGame`, on n'archive
+   * que les tables où au moins deux comptes réels s'affrontent : une partie
+   * contre des bots n'a rien à faire dans l'historique partagé.
+   */
+  startGame(matchId: string, code: string, accountIds: string[]): { recorded: boolean } {
+    const valid = accountIds.filter((id) => id && this.db.findById(id));
+    if (valid.length < 2) return { recorded: false };
+    this.db.openMatch(matchId, code, new Date(this.now()).toISOString(), valid);
+    return { recorded: true };
+  }
+
+  /** Historique des parties en ligne du compte, pseudos et avatars résolus. */
+  listMatches(id: string): OnlineMatch[] {
+    return this.db.listMatches(id, MATCH_HISTORY_LIMIT).map((m) => ({
+      id: m.id,
+      code: m.code,
+      startedAt: m.startedAt,
+      endedAt: m.endedAt,
+      players: m.players
+        .map((p) => {
+          const profile = this.db.findById(p.accountId);
+          return profile ? { ...profile, score: p.score } : null;
+        })
+        .filter((p): p is OnlineMatch['players'][number] => !!p)
+        // Partie finie : du meilleur (plus bas) au pire ; en cours : ordre stable.
+        .sort((a, b) => (a.score ?? 0) - (b.score ?? 0)),
+    }));
+  }
+
+  /** Efface toutes les traces sociales d'un compte supprimé. */
+  purge(id: string): void {
+    this.db.purgeAccount(id);
   }
 }

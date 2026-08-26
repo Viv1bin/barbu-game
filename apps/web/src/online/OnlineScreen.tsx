@@ -3,6 +3,8 @@ import { currentActor, isValidRoomCode, randomRoomCode, ROOM_CODE_LENGTH, type A
 import { GameTable, type SeatLabel, type TableView } from '../game/GameTable.js';
 import { OnlineLobby } from './OnlineLobby.js';
 import { useOnlineGame, type OnlineIdentity } from './useOnlineGame.js';
+import { Avatar } from '../ui/Avatar.js';
+import { Icon } from '../ui/Icon.js';
 
 /** Dernière salle rejointe, mémorisée pour proposer la reprise en ligne. */
 const LAST_ROOM_KEY = 'barbu.online.last';
@@ -24,9 +26,22 @@ const lastRoom = (): string | null => {
 // ---------------------------------------------------------------------------
 // Écran « En ligne » : création/rejoint (identité = compte), puis salon/partie.
 // ---------------------------------------------------------------------------
-export function OnlineScreen({ onBack, account, token }: { onBack: () => void; account: Account; token: string | null }) {
+export function OnlineScreen({
+  onBack,
+  account,
+  token,
+  initialRoom,
+}: {
+  onBack: () => void;
+  account: Account;
+  token: string | null;
+  /** Salle à rejoindre directement (reprise depuis l'historique des parties). */
+  initialRoom?: string | null;
+}) {
   const me: OnlineIdentity = { profileId: account.id, token: token ?? '' };
-  const [session, setSession] = useState<{ code: string } | null>(null);
+  const [session, setSession] = useState<{ code: string } | null>(
+    initialRoom && isValidRoomCode(initialRoom) ? { code: initialRoom } : null,
+  );
 
   const enter = (code: string) => {
     rememberRoom(code);
@@ -61,20 +76,20 @@ function OnlineLanding({
   return (
     <div className="app">
       <div className="topbar">
-        <button className="ghost" onClick={onBack}>← Menu</button>
+        <button className="ghost" onClick={onBack}><Icon name="arrowLeft" size={16} />Menu</button>
         <h1>Jouer en ligne</h1>
       </div>
 
       <div className="picker setup-wide">
         <div className="whoami">
-          <span className="avatar">{account.avatar}</span>
+          <Avatar name={account.avatar} />
           <span className="pfname">{account.pseudo}</span>
         </div>
         <p>Crée une partie et partage le code, ou rejoins un code existant.</p>
 
         {resumeCode && (
           <button className="ghost resumeonline" onClick={() => enter(resumeCode)}>
-            ⏯️ Reprendre la partie <b>{resumeCode}</b>
+            <Icon name="play" size={16} />Reprendre la partie <b>{resumeCode}</b>
           </button>
         )}
 
@@ -105,7 +120,7 @@ function OnlineRoom({ code, me, onLeave, onMenu }: { code: string; me: OnlineIde
     const s = game.seats[i];
     return {
       name: s?.name ?? (s?.kind === 'bot' ? 'Bot' : 'Libre'),
-      avatar: s?.avatar ?? (s?.kind === 'bot' ? '🤖' : '🪑'),
+      avatar: s?.avatar ?? (s?.kind === 'bot' ? 'bot' : 'seat'),
       bot: s?.kind !== 'human',
     };
   });

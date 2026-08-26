@@ -1,6 +1,6 @@
 import type { SavedGame } from '@barbu/engine';
 import type { SoloSave } from './useSoloGame.js';
-import { asSoloSave, describeSave, TOTAL_MANCHES } from './soloSave.js';
+import { asSoloSave, describeSave } from './soloSave.js';
 
 /**
  * Liste des parties solo en cours : reprendre ou supprimer. Partagée par
@@ -35,7 +35,7 @@ export function SavedGamesList({
             <button className="savedmain" onClick={() => onResume(raw.id, save)}>
               <span className="savedlevel">{d.level}</span>
               <span className="savedmeta">
-                Manche {d.manche}/{TOTAL_MANCHES}
+                Manche {d.manche}/{d.total}
                 {d.when && ` · ${d.when}`}
               </span>
             </button>

@@ -4,11 +4,13 @@ import {
   autoAction,
   createMatch,
   currentActor,
+  withMatchOptions,
   trickWinner,
   type Action,
   type Card,
   type ContractId,
   type Difficulty,
+  type MatchOptions,
   type MatchState,
   type PlayedCard,
   type PlayerId,
@@ -20,6 +22,10 @@ export const HUMAN = 0;
 const BOT_DELAY = 650; // ms entre deux coups de bot (voir les cartes tomber)
 const SHOW_MS = 1100; // ms d'affichage d'un pli complet
 const COLLECT_MS = 550; // ms d'animation « le gagnant ramasse le pli »
+
+/** Rythme des bots : multiplie tous les délais d'animation. */
+export type BotSpeed = 'posee' | 'normale' | 'rapide';
+const SPEED_FACTOR: Record<BotSpeed, number> = { posee: 1.6, normale: 1, rapide: 0.35 };
 
 /** RNG déterministe (mulberry32) dont l'état interne est lisible/réglable (pour la sauvegarde). */
 export interface Rng {
@@ -73,6 +79,10 @@ export interface SoloOptions {
   onPersist?: (save: SoloSave) => void;
   /** Appelé quand la partie se termine ou est relancée (efface la sauvegarde). */
   onClear?: () => void;
+  /** Règles de la partie (ignorées à la reprise : la sauvegarde porte les siennes). */
+  options?: MatchOptions;
+  /** Rythme des bots et des animations. */
+  speed?: BotSpeed;
 }
 
 export interface SoloGame {
@@ -107,7 +117,10 @@ export function useSoloGame(level: Difficulty, aid = false, opts: SoloOptions = 
   // Reprise : réinjecte l'état RNG sauvegardé (une seule fois, au tout premier rendu).
   const initedRef = useRef(false);
   if (!initedRef.current && resume) rngRef.current.state = resume.rng;
-  const [state, setState] = useState<MatchState>(() => (resume ? resume.state : createMatch(rngRef.current)));
+  const [state, setState] = useState<MatchState>(() =>
+    // Une sauvegarde d'avant l'ajout des options n'en a pas : on la complète.
+    resume ? withMatchOptions(resume.state) : createMatch(rngRef.current, opts.options)
+  );
   const [pause, setPause] = useState<TrickPause | null>(null);
   const [history, setHistory] = useState<SoloManche[]>(() => (resume ? resume.history : []));
   const dealRef = useRef<Card[][] | null>(null);
@@ -117,6 +130,7 @@ export function useSoloGame(level: Difficulty, aid = false, opts: SoloOptions = 
   if (state.pendingHands) dealRef.current = state.pendingHands.map((h) => h.slice());
 
   const busy = pause !== null;
+  const factor = SPEED_FACTOR[opts.speed ?? 'normale'];
 
   // Coup conseillé : l'IA « impossible » joue à la place de l'humain sur l'état
   // courant. RNG dédié (ne consomme pas celui de la partie) ; recalculé une fois
@@ -167,21 +181,21 @@ export function useSoloGame(level: Difficulty, aid = false, opts: SoloOptions = 
   // Boucle bots : si pas occupé et que l'acteur n'est pas l'humain, joue après un délai.
   useEffect(() => {
     if (busy || state.phase === 'DONE' || currentActor(state) === HUMAN) return;
-    const id = setTimeout(() => step(autoAction(state, rngRef.current, level)), BOT_DELAY);
+    const id = setTimeout(() => step(autoAction(state, rngRef.current, level)), BOT_DELAY * factor);
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, busy, level]);
+  }, [state, busy, level, factor]);
 
   // Pause en deux temps : afficher le pli, puis le faire filer vers le gagnant.
   useEffect(() => {
     if (!pause) return;
     if (!pause.collecting) {
-      const id = setTimeout(() => setPause((p) => (p ? { ...p, collecting: true } : p)), SHOW_MS);
+      const id = setTimeout(() => setPause((p) => (p ? { ...p, collecting: true } : p)), SHOW_MS * factor);
       return () => clearTimeout(id);
     }
-    const id = setTimeout(() => setPause(null), COLLECT_MS);
+    const id = setTimeout(() => setPause(null), COLLECT_MS * factor);
     return () => clearTimeout(id);
-  }, [pause]);
+  }, [pause, factor]);
 
   return {
     state,
@@ -201,7 +215,7 @@ export function useSoloGame(level: Difficulty, aid = false, opts: SoloOptions = 
       rngRef.current = mulberry((Math.random() * 2 ** 32) >>> 0);
       setPause(null);
       setHistory([]);
-      setState(createMatch(rngRef.current));
+      setState(createMatch(rngRef.current, state.options));
     },
     snapshot: () => ({ v: 1, level, rng: rngRef.current.state, state, history }),
   };

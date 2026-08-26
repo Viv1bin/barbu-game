@@ -2,6 +2,7 @@
 // Aucune logique ici : uniquement le contrat de messages et les vues.
 import type { Action, ContractId, MatchState, PlayedCard, PlayerId } from './types.js';
 import type { Difficulty } from './bots.js';
+import type { MatchOptions } from './options.js';
 
 /** Compte joueur exposé au client (jamais le hash ni le sel du mot de passe). */
 export interface Account {
@@ -67,6 +68,25 @@ export interface GameResultEntry {
   score: number;
 }
 
+/** Un joueur dans l'historique d'une partie en ligne. `score` null tant qu'elle dure. */
+export interface MatchPlayer extends PublicProfile {
+  score: number | null;
+}
+
+/**
+ * Une partie en ligne vue depuis l'historique d'un compte. Une salle peut
+ * enchaîner plusieurs parties : `id` identifie la partie, `code` la salle (c'est
+ * lui qu'on rejoint pour reprendre une partie encore en cours).
+ */
+export interface OnlineMatch {
+  id: string;
+  code: string;
+  startedAt: string;
+  /** null si la partie est encore en cours. */
+  endedAt: string | null;
+  players: MatchPlayer[];
+}
+
 /**
  * État de partie caviardé envoyé à un joueur : identique à `MatchState`, mais
  * les mains adverses (`pendingHands` / `round.hands`) sont vidées et seule la
@@ -111,7 +131,8 @@ export type ClientMsg =
   // session, le serveur en dérive le compte (id, pseudo, avatar).
   | { t: 'JOIN'; token: string }
   | { t: 'SEAT'; seat: PlayerId; kind: 'open' | 'bot'; level?: Difficulty }
-  | { t: 'START' }
+  // Les options sont proposées par l'hôte et renormalisées par le serveur.
+  | { t: 'START'; options?: MatchOptions }
   | { t: 'ACTION'; action: Action }
   | { t: 'NEW_GAME' }
   | { t: 'LEAVE' };
@@ -125,6 +146,8 @@ export type ServerMsg =
       hostId: string | null;
       youSeat: PlayerId | null;
       started: boolean;
+      /** Options avec lesquelles la partie a démarré (ou démarrera par défaut). */
+      options: MatchOptions;
     }
   | {
       t: 'VIEW';

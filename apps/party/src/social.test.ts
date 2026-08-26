@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { PublicProfile, SavedGame } from '@barbu/engine';
-import { MAX_SAVED_GAME_BYTES, SocialError, SocialLogic, type SocialDB, type StatsRow } from './social.js';
+import {
+  MAX_SAVED_GAME_BYTES,
+  SocialError,
+  SocialLogic,
+  type MatchRow,
+  type SocialDB,
+  type StatsRow,
+} from './social.js';
 
 // Implémentation en mémoire de SocialDB (miroir de la version SQLite du DO).
 class MemoryDB implements SocialDB {
@@ -69,12 +76,41 @@ class MemoryDB implements SocialDB {
   deleteSavedGame(accountId: string, gameId: string) {
     this.saves.get(accountId)?.delete(gameId);
   }
+  openMatch(id: string, code: string, startedAt: string, accountIds: string[]) {
+    this.matches.set(id, { id, code, startedAt, endedAt: null, players: accountIds.map((a) => ({ accountId: a, score: null })) });
+  }
+  closeMatch(id: string, endedAt: string, scores: { accountId: string; score: number }[]) {
+    const m = this.matches.get(id);
+    if (!m) return;
+    m.endedAt = endedAt;
+    for (const s of scores) {
+      const p = m.players.find((x) => x.accountId === s.accountId);
+      if (p) p.score = s.score;
+    }
+  }
+  listMatches(accountId: string, limit: number) {
+    return [...this.matches.values()]
+      .filter((m) => m.players.some((p) => p.accountId === accountId))
+      .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+      .slice(0, limit);
+  }
   touchPresence(id: string) {
     this.seen.set(id, this.clock);
   }
   presence(id: string) {
     return this.seen.get(id);
   }
+  purgeAccount(id: string) {
+    this.accounts.delete(id);
+    for (const k of [...this.friends]) if (k.startsWith(`${id}|`) || k.endsWith(`|${id}`)) this.friends.delete(k);
+    for (const k of [...this.requests]) if (k.startsWith(`${id}|`) || k.endsWith(`|${id}`)) this.requests.delete(k);
+    this.statsRows.delete(id);
+    this.saves.delete(id);
+    this.seen.delete(id);
+    for (const m of this.matches.values()) m.players = m.players.filter((p) => p.accountId !== id);
+    for (const [k, m] of [...this.matches]) if (m.players.length === 0) this.matches.delete(k);
+  }
+  matches = new Map<string, MatchRow>();
   clock = 1000; // horloge injectable pour la présence
 }
 
@@ -154,13 +190,13 @@ describe('stats en ligne', () => {
   it('enregistre parties, victoires, points et meilleur score', () => {
     const { social } = setup();
     // Partie 1 : Alice 40 (gagne), Bob 90, Carol 120
-    social.recordGame([
+    social.recordGame('m1', [
       { accountId: 'a', score: 40 },
       { accountId: 'b', score: 90 },
       { accountId: 'c', score: 120 },
     ]);
     // Partie 2 : Bob 30 (gagne), Alice 60
-    social.recordGame([
+    social.recordGame('m2', [
       { accountId: 'a', score: 60 },
       { accountId: 'b', score: 30 },
     ]);
@@ -171,10 +207,56 @@ describe('stats en ligne', () => {
 
   it('ignore les parties avec moins de 2 comptes réels', () => {
     const { social } = setup();
-    expect(social.recordGame([{ accountId: 'a', score: 10 }, { accountId: 'ghost', score: 20 }])).toEqual({
+    expect(social.recordGame('m1', [{ accountId: 'a', score: 10 }, { accountId: 'ghost', score: 20 }])).toEqual({
       recorded: false,
     });
     expect(social.myStats('a').games).toBe(0);
+  });
+});
+
+describe('historique des parties en ligne', () => {
+  it('liste les parties en cours puis terminées, avec les scores', () => {
+    const { social } = setup();
+    social.startGame('m1', 'ABCD1234', ['a', 'b', 'c']);
+    expect(social.listMatches('a')).toMatchObject([{ id: 'm1', code: 'ABCD1234', endedAt: null }]);
+    expect(social.listMatches('a')[0]!.players.map((p) => p.score)).toEqual([null, null, null]);
+    // Non-participant : la partie ne lui apparaît pas.
+    expect(social.listMatches('d')).toEqual([]);
+
+    social.recordGame('m1', [
+      { accountId: 'a', score: 90 },
+      { accountId: 'b', score: 40 },
+      { accountId: 'c', score: 120 },
+    ]);
+    const done = social.listMatches('b')[0]!;
+    expect(done.endedAt).not.toBeNull();
+    // Classement de la meilleure (plus basse) à la pire.
+    expect(done.players.map((p) => [p.pseudo, p.score])).toEqual([
+      ['Bob', 40],
+      ['Alice', 90],
+      ['Carol', 120],
+    ]);
+  });
+
+  it('ignore les tables de moins de 2 comptes réels', () => {
+    const { social } = setup();
+    expect(social.startGame('m1', 'ABCD1234', ['a', 'ghost'])).toEqual({ recorded: false });
+    expect(social.listMatches('a')).toEqual([]);
+  });
+
+  it('la suppression d’un compte efface ses traces sociales', () => {
+    const { social, db } = setup();
+    social.sendRequest('a', 'Bob');
+    social.respondRequest('b', 'a', true);
+    social.startGame('m1', 'ABCD1234', ['a', 'b']);
+    social.recordGame('m1', [{ accountId: 'a', score: 10 }, { accountId: 'b', score: 20 }]);
+
+    social.purge('a');
+    expect(db.findById('a')).toBeUndefined();
+    expect(social.snapshot('b').friends).toEqual([]);
+    expect(social.myStats('a')).toEqual({ games: 0, wins: 0, totalPoints: 0, bestScore: null });
+    // La partie survit pour Bob, mais sans le compte supprimé.
+    expect(social.listMatches('b')[0]!.players.map((p) => p.pseudo)).toEqual(['Bob']);
   });
 });
 

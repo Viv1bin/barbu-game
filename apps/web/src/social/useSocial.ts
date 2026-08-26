@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { PlayerStats, SocialSnapshot } from '@barbu/engine';
+import type { OnlineMatch, PlayerStats, SocialSnapshot } from '@barbu/engine';
 import { apiFetch, ApiError } from '../auth/api.js';
 
 const EMPTY_SNAPSHOT: SocialSnapshot = { friends: [], requests: [] };
@@ -11,6 +11,8 @@ const POLL_MS = 25_000;
 export interface Social {
   snapshot: SocialSnapshot;
   stats: PlayerStats;
+  /** Parties en ligne du compte (en cours et terminées), plus récente d'abord. */
+  matches: OnlineMatch[];
   loading: boolean;
   error: string | null;
   /** Recharge amis + stats depuis le serveur. */
@@ -30,6 +32,7 @@ export interface Social {
 export function useSocial(token: string | null): Social {
   const [snapshot, setSnapshot] = useState<SocialSnapshot>(EMPTY_SNAPSHOT);
   const [stats, setStats] = useState<PlayerStats>(EMPTY_STATS);
+  const [matches, setMatches] = useState<OnlineMatch[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const aliveRef = useRef(true);
@@ -37,13 +40,15 @@ export function useSocial(token: string | null): Social {
   const load = useCallback(async () => {
     if (!token) return;
     try {
-      const [snap, st] = await Promise.all([
+      const [snap, st, mt] = await Promise.all([
         apiFetch<SocialSnapshot>('/social/snapshot', { token }),
         apiFetch<{ stats: PlayerStats }>('/social/stats', { token }),
+        apiFetch<{ matches: OnlineMatch[] }>('/social/matches', { token }),
       ]);
       if (!aliveRef.current) return;
       setSnapshot(snap);
       setStats(st.stats);
+      setMatches(mt.matches);
       setError(null);
     } catch (e) {
       if (aliveRef.current) setError(e instanceof ApiError ? e.message : 'Chargement impossible.');
@@ -93,7 +98,7 @@ export function useSocial(token: string | null): Social {
     [token, load],
   );
 
-  return { snapshot, stats, loading, error, refresh: () => void load(), addFriend, respond, cancel, remove };
+  return { snapshot, stats, matches, loading, error, refresh: () => void load(), addFriend, respond, cancel, remove };
 }
 
 /**

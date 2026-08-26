@@ -2,6 +2,9 @@ import {
   applyMatchAction,
   autoAction,
   createMatch,
+  normalizeMatchOptions,
+  DEFAULT_MATCH_OPTIONS,
+  type MatchOptions,
   currentActor,
   redactState,
   trickWinner,
@@ -63,8 +66,10 @@ export interface RoomHost {
    * absent, invalide ou expiré.
    */
   resolveAccount(token: string): Promise<Account | null>;
+  /** Début d'une partie (comptes humains) → historique des parties en ligne. */
+  reportStart?(matchId: string, code: string, accountIds: string[]): void;
   /** Résultat d'une partie terminée (comptes humains + scores) → stats en ligne. */
-  reportResult?(entries: GameResultEntry[]): void;
+  reportResult?(matchId: string, entries: GameResultEntry[]): void;
 }
 
 /**
@@ -82,6 +87,13 @@ export class GameRoom {
   match: MatchState | null = null;
   history: MancheLog[] = [];
   started = false;
+  /** Options de la partie, fixées par l'hôte au démarrage. */
+  options: MatchOptions = DEFAULT_MATCH_OPTIONS;
+  /**
+   * Identifiant de la partie en cours dans l'historique. Une salle peut en
+   * enchaîner plusieurs (« Rejouer ») : chacune a le sien, la salle garde son code.
+   */
+  matchId: string | null = null;
   rng = mulberry((Math.random() * 2 ** 32) >>> 0);
 
   // Sérialise toutes les mutations d'état : évite les courses entre actions
@@ -113,7 +125,7 @@ export class GameRoom {
       case 'SEAT':
         return void this.run(async () => this.handleSeat(sender, msg));
       case 'START':
-        return void this.run(async () => this.handleStart(sender));
+        return void this.run(async () => this.handleStart(sender, msg));
       case 'ACTION':
         return void this.run(async () => this.handleAction(sender, msg.action)).then(() => this.tick());
       case 'NEW_GAME':
@@ -169,20 +181,23 @@ export class GameRoom {
     const seat = this.seats[msg.seat];
     if (!seat || seat.kind === 'human') return this.sendError(sender, 'Siège occupé par un joueur.');
     if (msg.kind === 'bot') {
-      this.seats[msg.seat] = { kind: 'bot', name: `Bot ${msg.seat + 1}`, avatar: '🤖', level: msg.level ?? DEFAULT_LEVEL };
+      this.seats[msg.seat] = { kind: 'bot', name: `Bot ${msg.seat + 1}`, avatar: 'bot', level: msg.level ?? DEFAULT_LEVEL };
     } else {
       this.seats[msg.seat] = { kind: 'open', level: DEFAULT_LEVEL };
     }
     this.broadcast();
   }
 
-  private handleStart(sender: Conn) {
+  private handleStart(sender: Conn, msg: Extract<ClientMsg, { t: 'START' }>) {
     if (!this.isHost(sender)) return this.sendError(sender, 'Seul l\'hôte peut démarrer.');
     if (this.started) return;
     if (this.seats.some((s) => s.kind === 'open')) return this.sendError(sender, 'Des sièges sont encore vides.');
+    // Les options viennent de l'hôte : on les renormalise avant de s'en servir.
+    this.options = normalizeMatchOptions(msg.options);
     this.started = true;
     this.history = [];
-    this.match = createMatch(this.rng);
+    this.match = createMatch(this.rng, this.options);
+    this.reportGameStart();
     this.broadcast();
     this.tick();
   }
@@ -191,7 +206,8 @@ export class GameRoom {
     if (!this.isHost(sender)) return this.sendError(sender, 'Seul l\'hôte peut relancer.');
     if (!this.match || this.match.phase !== 'DONE') return;
     this.history = [];
-    this.match = createMatch(this.rng);
+    this.match = createMatch(this.rng, this.options);
+    this.reportGameStart();
     this.broadcast();
   }
 
@@ -253,13 +269,20 @@ export class GameRoom {
     }
   }
 
+  /** Début de partie : ouvre l'entrée d'historique et retient son identifiant. */
+  private reportGameStart() {
+    this.matchId = `${this.room.id}:${Date.now()}`;
+    const accountIds = this.seats.filter((s) => s.kind === 'human' && s.profileId).map((s) => s.profileId!);
+    if (accountIds.length >= 2) this.room.reportStart?.(this.matchId, this.room.id, accountIds);
+  }
+
   /** Fin de partie : remonte les scores finaux des sièges humains (comptes). */
   private reportGameEnd(final: MatchState) {
     const entries: GameResultEntry[] = [];
     this.seats.forEach((s, p) => {
       if (s.kind === 'human' && s.profileId) entries.push({ accountId: s.profileId, score: final.scores[p]! });
     });
-    if (entries.length >= 2) this.room.reportResult?.(entries);
+    if (entries.length >= 2 && this.matchId) this.room.reportResult?.(this.matchId, entries);
   }
 
   // -- Diffusion -------------------------------------------------------------
@@ -278,7 +301,15 @@ export class GameRoom {
   }
 
   private lobbyMsg(seat: PlayerId | null): ServerMsg {
-    return { t: 'LOBBY', code: this.room.id, seats: this.seatInfos(), hostId: this.hostId, youSeat: seat, started: this.started };
+    return {
+      t: 'LOBBY',
+      code: this.room.id,
+      seats: this.seatInfos(),
+      hostId: this.hostId,
+      youSeat: seat,
+      started: this.started,
+      options: this.options,
+    };
   }
 
   private seatInfos(): SeatInfo[] {
