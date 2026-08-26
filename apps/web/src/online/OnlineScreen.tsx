@@ -1,13 +1,8 @@
 import { useState } from 'react';
-import { currentActor, type Account } from '@barbu/engine';
+import { currentActor, isValidRoomCode, randomRoomCode, ROOM_CODE_LENGTH, type Account } from '@barbu/engine';
 import { GameTable, type SeatLabel, type TableView } from '../game/GameTable.js';
 import { OnlineLobby } from './OnlineLobby.js';
 import { useOnlineGame, type OnlineIdentity } from './useOnlineGame.js';
-
-/** Génère un code de salle à 4 lettres. */
-function randomCode(): string {
-  return Array.from({ length: 4 }, () => String.fromCharCode(65 + Math.floor(Math.random() * 26))).join('');
-}
 
 /** Dernière salle rejointe, mémorisée pour proposer la reprise en ligne. */
 const LAST_ROOM_KEY = 'barbu.online.last';
@@ -29,8 +24,8 @@ const lastRoom = (): string | null => {
 // ---------------------------------------------------------------------------
 // Écran « En ligne » : création/rejoint (identité = compte), puis salon/partie.
 // ---------------------------------------------------------------------------
-export function OnlineScreen({ onBack, account }: { onBack: () => void; account: Account }) {
-  const me: OnlineIdentity = { profileId: account.id, name: account.pseudo, avatar: account.avatar };
+export function OnlineScreen({ onBack, account, token }: { onBack: () => void; account: Account; token: string | null }) {
+  const me: OnlineIdentity = { profileId: account.id, token: token ?? '' };
   const [session, setSession] = useState<{ code: string } | null>(null);
 
   const enter = (code: string) => {
@@ -53,11 +48,14 @@ function OnlineLanding({
 }) {
   const urlRoom = new URLSearchParams(location.search).get('room') ?? '';
   const [code, setCode] = useState(urlRoom.toUpperCase());
-  const resumeCode = lastRoom();
+  // Une salle mémorisée avant le passage aux codes longs n'est plus joignable.
+  const remembered = lastRoom();
+  const resumeCode = remembered && isValidRoomCode(remembered) ? remembered : null;
 
   const enter = (roomCode: string) => {
-    if (!roomCode.trim()) return;
-    onEnter(roomCode.trim().toUpperCase());
+    const clean = roomCode.trim().toUpperCase();
+    if (!isValidRoomCode(clean)) return;
+    onEnter(clean);
   };
 
   return (
@@ -81,15 +79,15 @@ function OnlineLanding({
         )}
 
         <div className="onlineactions">
-          <button onClick={() => enter(randomCode())}>Créer une partie</button>
+          <button onClick={() => enter(randomRoomCode())}>Créer une partie</button>
           <div className="joinrow">
             <input
               value={code}
               placeholder="CODE"
-              maxLength={4}
+              maxLength={ROOM_CODE_LENGTH}
               onChange={(e) => setCode(e.target.value.toUpperCase())}
             />
-            <button className="ghost" disabled={code.trim().length < 4} onClick={() => enter(code)}>Rejoindre</button>
+            <button className="ghost" disabled={!isValidRoomCode(code.trim())} onClick={() => enter(code)}>Rejoindre</button>
           </div>
         </div>
       </div>

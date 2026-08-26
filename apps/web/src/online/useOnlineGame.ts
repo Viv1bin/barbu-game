@@ -42,11 +42,13 @@ export interface OnlineGame {
   reussitePass: () => void;
 }
 
-/** Identité locale envoyée au serveur (profil réutilisé). */
+/**
+ * Identité locale. Seul le `token` part sur le fil : le serveur en dérive le
+ * compte. `profileId` ne sert qu'à l'affichage local (savoir si on est hôte).
+ */
 export interface OnlineIdentity {
   profileId: string;
-  name: string;
-  avatar: string;
+  token: string;
 }
 
 export function useOnlineGame(code: string, me: OnlineIdentity): OnlineGame {
@@ -72,7 +74,7 @@ export function useOnlineGame(code: string, me: OnlineIdentity): OnlineGame {
     const onOpen = () => {
       setConnected(true);
       setError(null);
-      send({ t: 'JOIN', profileId: me.profileId, name: me.name, avatar: me.avatar });
+      send({ t: 'JOIN', token: me.token });
     };
     const onClose = () => setConnected(false);
     const onError = () => setError('Connexion au serveur impossible.');

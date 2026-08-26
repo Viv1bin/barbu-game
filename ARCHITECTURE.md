@@ -164,14 +164,39 @@ stockage SQLite : tables `accounts` + `sessions`) tient les comptes. La logique
 (`apps/party/src/auth.ts`, `AuthLogic` sur une abstraction `AuthDB`) est agnostique du runtime →
 testée sans Durable Object (impl `AuthDB` en mémoire). Mots de passe hachés en **PBKDF2-SHA256**
 (WebCrypto). Endpoints JSON (avec CORS) exposés par le `fetch` racine : `POST /auth/register`,
-`/auth/login`, `/auth/logout`, `/auth/profile` (Bearer), `GET /auth/me`. Côté client
-(`apps/web/src/auth/`) : `useAuth` garde le **token** en `localStorage` et le revalide au démarrage
-(`/auth/me`) ; `AuthScreen` gère connexion/inscription ; `SettingsScreen` = « Mon compte » (avatar,
-pseudo, déconnexion).
+`/auth/login`, `/auth/logout`, `/auth/profile` (Bearer), `/auth/password` (Bearer),
+`GET /auth/me`. Côté client (`apps/web/src/auth/`) : `useAuth` garde le **token** en
+`localStorage` et le revalide au démarrage (`/auth/me`) ; `AuthScreen` gère
+connexion/inscription ; `SettingsScreen` = « Mon compte » (avatar, pseudo, mot de passe,
+déconnexion).
+
+### Modèle de sécurité
+
+Ce qui protège les comptes et les parties, en un coup d'œil :
+
+- **Identité en ligne** : le client ne déclare jamais qui il est. `JOIN` porte le **token de
+  session** ; `BarbuServer` le résout auprès d'`AuthServer` (RPC `accountForToken`) et la salle
+  dérive id/pseudo/avatar du compte. Sans ça, n'importe qui pourrait prendre le siège d'un autre
+  — donc voir sa main.
+- **Caviardage** : chaque connexion reçoit une vue projetée sur son siège (`redactState`), les
+  spectateurs ont la perspective `-1`. Le serveur reste seul détenteur de l'état complet.
+- **Sessions** : token opaque de 24 octets, expiration à 30 jours (`SESSION_TTL_MS`), purge des
+  échues à chaque ouverture de session. Changer de mot de passe **révoque toutes les autres
+  sessions** du compte.
+- **Bruteforce** : `RateLimiter` en mémoire du DO — échecs plafonnés par pseudo et tentatives
+  plafonnées par IP, consommés *avant* le PBKDF2 (qui est l'opération coûteuse à protéger).
+- **Codes de salle** : 6 caractères tirés au CSPRNG sur un alphabet de 32 (`packages/engine/src/roomCode.ts`),
+  soit ~1,07 milliard de combinaisons ; le Worker refuse tout code hors format. Un code court
+  serait énumérable, donc toutes les parties en cours seraient joignables.
+- **Entrées bornées** : corps de requête plafonné, sauvegarde solo ≤ 64 Ko (une partie complète
+  pèse ~3,6 Ko), avatar validé contre la liste partagée (`packages/engine/src/profile.ts`).
+- **Règles partagées** : `profile.ts` et `roomCode.ts` vivent dans le moteur pour que l'UI et le
+  serveur appliquent les mêmes règles — mais c'est toujours la validation serveur qui fait foi.
 
 ## Protocole réseau (online)
 
-Client → Serveur : `JOIN {code,name}`, `ACTION {action}`, `LEAVE`.
+Client → Serveur : `JOIN {token}`, `SEAT {seat,kind,level}`, `START`, `ACTION {action}`,
+`NEW_GAME`, `LEAVE`.
 Serveur → Client : `VIEW {redactedState}`, `ERROR {msg}`, `LOBBY {players}`.
 
 ## Bots

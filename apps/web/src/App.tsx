@@ -44,7 +44,7 @@ export function App() {
       />
     );
   }
-  if (screen === 'online') return <OnlineScreen onBack={back} account={auth.account} />;
+  if (screen === 'online') return <OnlineScreen onBack={back} account={auth.account} token={auth.token} />;
   if (screen === 'settings') {
     return (
       <SettingsScreen

@@ -14,6 +14,13 @@ import type {
 /** Au-delà de ce délai sans « ping », un compte est considéré hors ligne. */
 const ONLINE_WINDOW_MS = 70_000;
 
+/**
+ * Taille maximale d'une sauvegarde solo, sérialisée. Une partie réelle pèse
+ * quelques kilo-octets ; la borne empêche un compte de faire enfler le SQLite
+ * du Durable Object, qui est partagé par tous les joueurs.
+ */
+export const MAX_SAVED_GAME_BYTES = 64 * 1024;
+
 // --- Modèle de stockage --------------------------------------------------
 
 /** Ligne de stats telle que persistée. */
@@ -175,6 +182,17 @@ export class SocialLogic {
   }
 
   saveGame(id: string, gameId: unknown, state: unknown): { ok: true } {
+    if (state === undefined || state === null) throw new SocialError('Sauvegarde vide.');
+    let encoded: string;
+    try {
+      encoded = JSON.stringify(state);
+    } catch {
+      throw new SocialError('Sauvegarde illisible.'); // cycles, BigInt…
+    }
+    if (encoded === undefined) throw new SocialError('Sauvegarde illisible.');
+    if (new TextEncoder().encode(encoded).length > MAX_SAVED_GAME_BYTES) {
+      throw new SocialError('Sauvegarde trop volumineuse.', 413);
+    }
     this.db.putSavedGame(id, gameKey(gameId), state);
     return { ok: true };
   }

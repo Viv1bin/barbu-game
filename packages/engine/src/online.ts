@@ -107,7 +107,9 @@ export interface MancheLog {
 
 /** Messages client → serveur. */
 export type ClientMsg =
-  | { t: 'JOIN'; profileId: string; name: string; avatar: string }
+  // L'identité n'est jamais déclarée par le client : il présente son token de
+  // session, le serveur en dérive le compte (id, pseudo, avatar).
+  | { t: 'JOIN'; token: string }
   | { t: 'SEAT'; seat: PlayerId; kind: 'open' | 'bot'; level?: Difficulty }
   | { t: 'START' }
   | { t: 'ACTION'; action: Action }

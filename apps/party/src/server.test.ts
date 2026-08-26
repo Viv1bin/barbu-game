@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { GameRoom, TIMING } from './core.js';
-import type { ClientMsg, ServerMsg } from '@barbu/engine';
+import type { Account, ClientMsg, ServerMsg } from '@barbu/engine';
 
 // Faux harnais de transport : capture les messages envoyés à chaque connexion.
 class FakeConn {
@@ -10,11 +10,20 @@ class FakeConn {
     this.sent.push(JSON.parse(s) as ServerMsg);
   }
 }
+/** Registre de comptes factice : un token → un compte. */
+const ACCOUNTS: Record<string, Account> = {
+  'tok-host': { id: 'p-host', pseudo: 'Hôte', avatar: '🙂' },
+  'tok-other': { id: 'p-other', pseudo: 'Autre', avatar: '🦊' },
+};
+
 class FakeRoom {
   id = 'TEST';
   conns: FakeConn[] = [];
   getConnections() {
     return this.conns;
+  }
+  resolveAccount(token: string): Promise<Account | null> {
+    return Promise.resolve(ACCOUNTS[token] ?? null);
   }
 }
 
@@ -39,7 +48,7 @@ describe('serveur en ligne', () => {
     room.conns.push(host);
 
     server.onConnect(host);
-    server.onMessage(msg({ t: 'JOIN', profileId: 'p-host', name: 'Hôte', avatar: '🙂' }), host);
+    server.onMessage(msg({ t: 'JOIN', token: 'tok-host' }), host);
     for (const seat of [1, 2, 3] as const) {
       server.onMessage(msg({ t: 'SEAT', seat, kind: 'bot', level: 'facile' }), host);
     }
@@ -56,12 +65,64 @@ describe('serveur en ligne', () => {
     for (const opp of [1, 2, 3]) expect(hands[opp]!.length).toBe(0); // adverses cachées
   });
 
+  it('JOIN sans token valide → ERROR, aucun siège attribué', async () => {
+    const room = new FakeRoom();
+    const server = new GameRoom(room);
+    const intrus = new FakeConn('x');
+    room.conns.push(intrus);
+
+    server.onMessage(msg({ t: 'JOIN', token: 'token-bidon' }), intrus);
+    await flush();
+
+    expect(intrus.sent.some((m) => m.t === 'ERROR')).toBe(true);
+    expect(server.seats.every((s) => s.kind === 'open')).toBe(true);
+    expect(server.hostId).toBeNull();
+  });
+
+  it('un intrus ne peut pas reprendre le siège d\'un autre compte', async () => {
+    const room = new FakeRoom();
+    const server = new GameRoom(room);
+    const host = new FakeConn('h');
+    room.conns.push(host);
+    server.onMessage(msg({ t: 'JOIN', token: 'tok-host' }), host);
+    await flush();
+    expect(server.seats[0]!.profileId).toBe('p-host');
+
+    // L'intrus connaît l'id du joueur assis, mais pas son token : il obtient
+    // au mieux un siège libre, jamais celui de la victime.
+    const intrus = new FakeConn('x');
+    room.conns.push(intrus);
+    server.onMessage(msg({ t: 'JOIN', token: 'tok-other' }), intrus);
+    await flush();
+
+    expect(server.seats[0]!.profileId).toBe('p-host');
+    expect(server.seats[0]!.connId).toBe('h'); // la victime garde sa connexion
+    expect(server.seats[1]!.profileId).toBe('p-other');
+  });
+
+  it('le pseudo et l\'avatar viennent du compte, pas du client', async () => {
+    const room = new FakeRoom();
+    const server = new GameRoom(room);
+    const host = new FakeConn('h');
+    room.conns.push(host);
+    // Le client tente de se déclarer sous un autre nom : ignoré.
+    server.onMessage(
+      JSON.stringify({ t: 'JOIN', token: 'tok-host', profileId: 'p-other', name: 'Pirate', avatar: '💀' }),
+      host,
+    );
+    await flush();
+
+    expect(server.seats[0]!.profileId).toBe('p-host');
+    expect(server.seats[0]!.name).toBe('Hôte');
+    expect(server.seats[0]!.avatar).toBe('🙂');
+  });
+
   it('coup illégal / hors-tour → ERROR, état inchangé', async () => {
     const room = new FakeRoom();
     const server = new GameRoom(room);
     const host = new FakeConn('h');
     room.conns.push(host);
-    server.onMessage(msg({ t: 'JOIN', profileId: 'p', name: 'Hôte', avatar: '🙂' }), host);
+    server.onMessage(msg({ t: 'JOIN', token: 'tok-host' }), host);
     // Action alors qu'aucune partie n'est lancée → ERROR.
     host.sent = [];
     server.onMessage(msg({ t: 'ACTION', action: { t: 'PLAY_CARD', player: 0, card: { suit: 'H', rank: 2 } } }), host);
@@ -75,7 +136,7 @@ describe('serveur en ligne', () => {
     const server = new GameRoom(room);
     const host = new FakeConn('h');
     room.conns.push(host);
-    server.onMessage(msg({ t: 'JOIN', profileId: 'p', name: 'Hôte', avatar: '🙂' }), host);
+    server.onMessage(msg({ t: 'JOIN', token: 'tok-host' }), host);
     for (const seat of [1, 2, 3] as const) {
       server.onMessage(msg({ t: 'SEAT', seat, kind: 'bot', level: 'facile' }), host);
     }
