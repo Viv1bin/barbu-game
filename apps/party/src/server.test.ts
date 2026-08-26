@@ -296,6 +296,22 @@ describe('serveur en ligne', () => {
     expect(server.seats[1]!.connId).toBe('o2');
   });
 
+  it('FILL_BOT est refusé à un joueur qui n\'est pas l\'hôte', async () => {
+    const { server, host, other } = await startedRoom();
+    server.onClose(host); // l'hôte part : `other` devient hôte par intérim
+    await flush();
+    // `other` est hôte par intérim, mais le créateur reste propriétaire : dès
+    // qu'il revient il reprend la main. Ici on vérifie qu'un simple joueur ne
+    // peut pas décider à la place de l'hôte du moment.
+    server.hostId = 'p-host';
+    other.sent.length = 0;
+    server.onMessage(msg({ t: 'FILL_BOT', seat: 0, level: 'facile' }), other);
+    await flush();
+
+    expect(server.seats[0]!.kind).toBe('human');
+    expect(other.sent.findLast((m) => m.t === 'ERROR')?.t).toBe('ERROR');
+  });
+
   it('la salle restaure son état : reprise directe, sans reconfiguration', async () => {
     const { room, server, host } = await startedRoom();
     server.onMessage(msg({ t: 'ACTION', action: { t: 'CHOOSE_CONTRACT', contract: 'BARBU' } }), host);

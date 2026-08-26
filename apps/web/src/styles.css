@@ -255,7 +255,13 @@ button.hinted { outline: 2px solid var(--accent); outline-offset: 2px; opacity: 
   user-select: none;
 }
 .pcard.red { color: var(--card-red); }
-.pcard .corner { position: absolute; line-height: 1; font-weight: 700; }
+.pcard .corner {
+  position: absolute; line-height: 1; font-weight: 700;
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+}
+/* Symbole de couleur sous le rang : c'est la seule partie visible d'une carte
+   couverte par sa voisine dans l'éventail. */
+.pcard .csuit { font-style: normal; font-size: .78em; line-height: 1; }
 .pcard .corner.tl { top: 5px; left: 6px; }
 .pcard .corner.br { bottom: 5px; right: 6px; transform: rotate(180deg); }
 .pcard .pip { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; opacity: .9; }
@@ -341,15 +347,14 @@ footer { border-top: 1px solid var(--border); padding-top: 10px; }
   font-size: .8rem; color: var(--muted); border: 1px solid var(--border);
   border-radius: 999px; padding: 3px 10px;
 }
-/* Décision de remplacement portée par le siège du joueur parti, là où on la cherche. */
-.sgone { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: 5px; }
-.sgone .gonetag {
-  font-size: .68rem; letter-spacing: .04em; text-transform: uppercase;
-  color: var(--card-red); border: 1px solid var(--card-red);
-  border-radius: 999px; padding: 1px 8px;
+/* Pastille posée par-dessus la plaque, comme `.ctag` : hors flux, elle ne change
+   pas la taille du siège — sinon la table se déforme sur mobile. Le bouton de
+   remplacement vit dans `.roombanner`. */
+.gonetag {
+  position: absolute; top: -8px; left: -8px;
+  font-size: .6rem; letter-spacing: .04em; text-transform: uppercase;
+  background: var(--card-red); color: #fff; padding: 1px 6px; border-radius: var(--r-sm);
 }
-/* Le bouton se plie plutôt que d'élargir le siège, qui déborderait de la table. */
-.sgone button { white-space: normal; font-size: .7rem; padding: 3px 7px; line-height: 1.2; }
 
 /* --- Table de jeu --------------------------------------------------------- */
 .app.solo { max-width: 860px; }
