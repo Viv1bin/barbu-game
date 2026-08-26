@@ -1,8 +1,6 @@
 import { useState } from 'react';
-import { MIN_PASSWORD_LENGTH } from '@barbu/engine';
-import { AVATARS } from './avatars.js';
+import { DEFAULT_AVATAR, MIN_PASSWORD_LENGTH } from '@barbu/engine';
 import { ApiError, type Auth } from './useAuth.js';
-import { Icon, isIconName } from '../ui/Icon.js';
 
 type Mode = 'login' | 'register';
 
@@ -11,7 +9,6 @@ export function AuthScreen({ auth }: { auth: Auth }) {
   const [mode, setMode] = useState<Mode>('login');
   const [pseudo, setPseudo] = useState('');
   const [password, setPassword] = useState('');
-  const [avatar, setAvatar] = useState(AVATARS[0]!);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -25,7 +22,7 @@ export function AuthScreen({ auth }: { auth: Auth }) {
     setBusy(true);
     setError(null);
     try {
-      if (mode === 'register') await auth.register(pseudo, password, avatar);
+      if (mode === 'register') await auth.register(pseudo, password, DEFAULT_AVATAR);
       else await auth.login(pseudo, password);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Une erreur est survenue.');
@@ -70,14 +67,6 @@ export function AuthScreen({ auth }: { auth: Auth }) {
             onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && submit()}
           />
-
-          {mode === 'register' && (
-            <div className="avatars">
-              {AVATARS.map((a) => (
-                <button key={a} className={`avatarpick ${a === avatar ? 'on' : ''}`} onClick={() => setAvatar(a)}>{isIconName(a) && <Icon name={a} size={20} />}</button>
-              ))}
-            </div>
-          )}
 
           {error && <p className="errline">{error}</p>}
 

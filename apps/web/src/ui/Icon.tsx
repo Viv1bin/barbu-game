@@ -8,6 +8,9 @@ export type IconName = keyof typeof PATHS;
 const PATHS = {
   // --- Navigation & actions ---
   cards: <><rect x="3" y="7" width="11" height="14" rx="2" /><path d="M8 7V5a2 2 0 0 1 2.4-2l7 1.5A2 2 0 0 1 19 7l-2 9" /></>,
+  image: <><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8.5" cy="9.5" r="1.5" /><path d="M4 17l5-5 4 4 3-2 4 4" /></>,
+  sliders: <><path d="M4 8h10M18 8h2M4 16h4M12 16h8" /><circle cx="16" cy="8" r="2" /><circle cx="10" cy="16" r="2" /></>,
+  user: <><circle cx="12" cy="8" r="3.5" /><path d="M5 20a7 7 0 0 1 14 0" /></>,
   users: <><circle cx="9" cy="8" r="3" /><path d="M3 20a6 6 0 0 1 12 0" /><path d="M16 5.5a3 3 0 0 1 0 5.8" /><path d="M17.5 14.5A6 6 0 0 1 21 20" /></>,
   book: <><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H19v15H6.5A2.5 2.5 0 0 0 4 20.5z" /><path d="M4 20.5A2.5 2.5 0 0 1 6.5 18H19v3H6.5A2.5 2.5 0 0 1 4 20.5z" /></>,
   arrowLeft: <path d="M19 12H5m0 0 6-6m-6 6 6 6" />,
@@ -41,19 +44,13 @@ const PATHS = {
   shuffle: <><path d="M3 7h4l10 10h4" /><path d="M3 17h4L17 7h4" /><path d="m18 4 3 3-3 3M18 14l3 3-3 3" /></>,
   trophy: <><path d="M7 4h10v6a5 5 0 0 1-10 0z" /><path d="M7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3" /><path d="M12 15v3M8 21h8" /></>,
 
-  // --- Avatars : formes géométriques simples, sans figuratif ---
-  circle: <circle cx="12" cy="12" r="8" />,
-  square: <rect x="4.5" y="4.5" width="15" height="15" rx="2.5" />,
-  triangle: <path d="M12 4 21 19H3z" />,
-  diamond: <path d="m12 3 9 9-9 9-9-9z" />,
-  hexagon: <path d="m12 3 7.8 4.5v9L12 21l-7.8-4.5v-9z" />,
-  star: <path d="m12 3 2.7 6.1 6.6.6-5 4.4 1.5 6.5L12 17.2 6.2 20.6l1.5-6.5-5-4.4 6.6-.6z" />,
-  spade: <><path d="M12 3c0 4-7 6-7 10.5a3.5 3.5 0 0 0 6 2.4 3.5 3.5 0 0 0 6-2.4C17 9 12 7 12 3" /><path d="M12 15v6M9.5 21h5" /></>,
-  club: <><circle cx="12" cy="7.5" r="3.5" /><circle cx="7" cy="13" r="3.5" /><circle cx="17" cy="13" r="3.5" /><path d="M12 14v7M9.5 21h5" /></>,
-  moon: <path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5" />,
-  sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M5 5l1.8 1.8M17.2 17.2 19 19M19 5l-1.8 1.8M6.8 17.2 5 19" /></>,
-  drop: <path d="M12 3c3.5 4.5 6 7.6 6 10.5a6 6 0 0 1-12 0C6 10.6 8.5 7.5 12 3" />,
-  ring: <><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3.2" /></>,
+  // --- Avatar par défaut : silhouette pleine, seule alternative à une photo ---
+  person: (
+    <>
+      <circle cx="12" cy="9" r="4" fill="currentColor" stroke="none" />
+      <path d="M4 21a8 8 0 0 1 16 0z" fill="currentColor" stroke="none" />
+    </>
+  ),
 } as const;
 
 /**

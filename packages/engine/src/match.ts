@@ -3,6 +3,13 @@
 import { deal, fullDeck, shuffle } from './cards.js';
 import { ALL_CONTRACTS, CONTRACTS } from './contracts.js';
 import { applyContres } from './contre.js';
+import {
+  DEFAULT_MATCH_OPTIONS,
+  initialDealer,
+  normalizeMatchOptions,
+  totalManches,
+  type MatchOptions,
+} from './options.js';
 import { botChooseContract, botContre, botReussite, botTrickPlay, type Difficulty } from './bots.js';
 import { scoreReussite, scoreTrickContract } from './scoring.js';
 import { currentPlayer, initTrickRound, playCard } from './trickRound.js';
@@ -17,7 +24,8 @@ import type {
   TrickRoundState,
 } from './types.js';
 
-export const TOTAL_MANCHES = 28; // 4 donneurs × 7 contrats
+/** Durée d'une partie aux règles complètes : 4 donneurs × 7 contrats. */
+export const TOTAL_MANCHES = totalManches(DEFAULT_MATCH_OPTIONS);
 
 /** Distribue et ouvre la phase de choix du contrat pour le donneur courant. */
 function startManche(base: Omit<MatchState, 'pendingHands' | 'phase' | 'currentContract' | 'reussiteRank' | 'contres' | 'contreDecided' | 'round'>, rng: () => number): MatchState {
@@ -33,11 +41,13 @@ function startManche(base: Omit<MatchState, 'pendingHands' | 'phase' | 'currentC
   };
 }
 
-/** Crée une partie neuve (donneur = joueur 0) et distribue la 1re manche. */
-export function createMatch(rng: () => number = Math.random): MatchState {
+/** Crée une partie neuve et distribue la 1re manche. */
+export function createMatch(rng: () => number = Math.random, options?: unknown): MatchState {
+  const opts = options === undefined ? DEFAULT_MATCH_OPTIONS : normalizeMatchOptions(options);
   return startManche(
     {
-      dealer: 0,
+      options: opts,
+      dealer: initialDealer(opts, rng),
       playedContracts: [[], [], [], []],
       scores: [0, 0, 0, 0],
       mancheCount: 0,
@@ -46,10 +56,22 @@ export function createMatch(rng: () => number = Math.random): MatchState {
   );
 }
 
-/** Contrats que le donneur courant n'a pas encore donnés. */
+/**
+ * Remet des options valides sur un état venu de l'extérieur : sauvegarde faite
+ * avant l'ajout des options, ou état reçu d'un client. Sans ça, `s.options`
+ * serait `undefined` et tout le reste planterait à la première manche.
+ */
+export function withMatchOptions(s: MatchState): MatchState {
+  return s.options && Array.isArray(s.options.contracts)
+    ? s
+    : { ...s, options: normalizeMatchOptions(s.options) };
+}
+
+/** Contrats que le donneur courant n'a pas encore donnés, parmi ceux en jeu. */
 export function legalContracts(s: MatchState): ContractId[] {
   const done = s.playedContracts[s.dealer]!;
-  return ALL_CONTRACTS.filter((c) => !done.includes(c));
+  const inPlay = s.options?.contracts ?? ALL_CONTRACTS;
+  return ALL_CONTRACTS.filter((c) => inPlay.includes(c) && !done.includes(c));
 }
 
 /** Prochain joueur devant répondre au contre (ordre : donneur+1, +2, +3). */
@@ -88,11 +110,11 @@ function scoreAndAdvance(s: MatchState, rng: () => number): MatchState {
   playedContracts[s.dealer]!.push(contract);
   const mancheCount = s.mancheCount + 1;
 
-  if (mancheCount >= TOTAL_MANCHES) {
+  if (mancheCount >= totalManches(s.options)) {
     return { ...s, scores, playedContracts, mancheCount, phase: 'DONE', round: null, pendingHands: null };
   }
   return startManche(
-    { dealer: ((s.dealer + 1) % 4) as PlayerId, playedContracts, scores, mancheCount },
+    { options: s.options, dealer: ((s.dealer + 1) % 4) as PlayerId, playedContracts, scores, mancheCount },
     rng
   );
 }
@@ -109,7 +131,7 @@ export function applyMatchAction(s: MatchState, action: Action, rng: () => numbe
       if (CONTRACTS[action.contract].kind === 'reussite' && action.rank == null) {
         throw new Error('Réussite : hauteur (rank) requise');
       }
-      return {
+      const next: MatchState = {
         ...s,
         currentContract: action.contract,
         reussiteRank: action.rank ?? null,
@@ -117,6 +139,9 @@ export function applyMatchAction(s: MatchState, action: Action, rng: () => numbe
         contres: [],
         contreDecided: [],
       };
+      // Contre désactivé : on saute la phase et on distribue tout de suite.
+      if (!s.options.contre) return { ...next, phase: 'PLAY', round: initRound(next) };
+      return next;
     }
 
     case 'CONTRE': {

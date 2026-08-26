@@ -1,5 +1,14 @@
-import type { Difficulty, PlayerId, SeatInfo } from '@barbu/engine';
+import { useState } from 'react';
+import {
+  DEFAULT_MATCH_OPTIONS,
+  totalManches,
+  type Difficulty,
+  type MatchOptions,
+  type PlayerId,
+  type SeatInfo,
+} from '@barbu/engine';
 import type { OnlineGame } from './useOnlineGame.js';
+import { MatchOptionsForm } from '../game/MatchOptionsForm.js';
 import { Avatar } from '../ui/Avatar.js';
 import { Icon } from '../ui/Icon.js';
 
@@ -14,6 +23,7 @@ const LEVELS: { id: Difficulty; label: string }[] = [
 /** Salon d'attente : code partageable + configuration des sièges par l'hôte. */
 export function OnlineLobby({ game, code, onBack }: { game: OnlineGame; code: string; onBack: () => void }) {
   const { seats, youSeat, isHost } = game;
+  const [options, setOptions] = useState<MatchOptions>(DEFAULT_MATCH_OPTIONS);
   const link = `${location.origin}${location.pathname}?room=${code}`;
   const full = seats.length === 4 && seats.every((s) => s.kind !== 'open');
 
@@ -44,8 +54,16 @@ export function OnlineLobby({ game, code, onBack }: { game: OnlineGame; code: st
 
         {isHost ? (
           <>
-            <p className="muted">Tu es l'hôte. Remplis chaque siège vide (place ouverte pour un ami, ou un bot), puis lance la partie.</p>
-            <button disabled={!full} onClick={game.startMatch}>Démarrer la partie</button>
+            <p className="muted">Tu es l'hôte. Remplis chaque siège vide (place ouverte pour un ami, ou un bot), règle les options, puis lance la partie.</p>
+
+            <div className="panel">
+              <div className="panelhead"><h3>Règles de la partie</h3></div>
+              <MatchOptionsForm value={options} onChange={setOptions} />
+            </div>
+
+            <button className="bigstart" disabled={!full} onClick={() => game.startMatch(options)}>
+              <Icon name="play" size={18} />Démarrer — {totalManches(options)} manches
+            </button>
           </>
         ) : (
           <p className="muted">En attente de l'hôte pour démarrer…</p>

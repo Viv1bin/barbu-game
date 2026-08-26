@@ -4,8 +4,8 @@ import { SUIT_RED, SUIT_SYMBOL, rankLabel } from '../format.js';
 export type CardSize = 'sm' | 'md' | 'lg';
 
 /**
- * Carte à jouer « visuelle » : coins rang+couleur (lisibles même en éventail
- * superposé) + grand symbole central. Remplace le libellé texte `A♥` partout
+ * Carte à jouer « visuelle » : rang seul dans les coins (lisible même en
+ * éventail superposé) + grand symbole de couleur au centre. Remplace le libellé texte `A♥` partout
  * où l'on veut du volume. Purement présentationnel — l'interactivité (bouton)
  * est gérée par l'appelant.
  */
@@ -23,15 +23,9 @@ export function PlayingCard({
   const s = SUIT_SYMBOL[card.suit];
   return (
     <span className={`pcard ${size} ${red ? 'red' : 'black'} ${className}`} aria-label={`${r}${s}`}>
-      <span className="corner tl">
-        <b>{r}</b>
-        <i>{s}</i>
-      </span>
+      <span className="corner tl">{r}</span>
       <span className="pip">{s}</span>
-      <span className="corner br">
-        <b>{r}</b>
-        <i>{s}</i>
-      </span>
+      <span className="corner br">{r}</span>
     </span>
   );
 }

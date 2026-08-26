@@ -461,7 +461,6 @@ function ContractBar({ view }: { view: TableView }) {
             title={CONTRACT_HINT[c]}
             onClick={() => (c === 'REUSSITE' ? setReussite(true) : actions.chooseContract(c))}
           >
-            <span className="cb-ic"><Icon name={CONTRACT_ICON[c]} size={17} /></span>
             {CONTRACT_LABEL[c]}
           </button>
         ))}

@@ -26,9 +26,22 @@ const lastRoom = (): string | null => {
 // ---------------------------------------------------------------------------
 // Écran « En ligne » : création/rejoint (identité = compte), puis salon/partie.
 // ---------------------------------------------------------------------------
-export function OnlineScreen({ onBack, account, token }: { onBack: () => void; account: Account; token: string | null }) {
+export function OnlineScreen({
+  onBack,
+  account,
+  token,
+  initialRoom,
+}: {
+  onBack: () => void;
+  account: Account;
+  token: string | null;
+  /** Salle à rejoindre directement (reprise depuis l'historique des parties). */
+  initialRoom?: string | null;
+}) {
   const me: OnlineIdentity = { profileId: account.id, token: token ?? '' };
-  const [session, setSession] = useState<{ code: string } | null>(null);
+  const [session, setSession] = useState<{ code: string } | null>(
+    initialRoom && isValidRoomCode(initialRoom) ? { code: initialRoom } : null,
+  );
 
   const enter = (code: string) => {
     rememberRoom(code);

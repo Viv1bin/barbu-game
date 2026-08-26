@@ -1,14 +1,30 @@
 import { useMemo, useState } from 'react';
-import type { Account, FriendInfo, FriendRequestInfo, PlayerStats } from '@barbu/engine';
+import type { Account, FriendInfo, FriendRequestInfo, OnlineMatch, PlayerStats } from '@barbu/engine';
 import { ApiError, useSocial } from './useSocial.js';
 import { Avatar } from '../ui/Avatar.js';
+import { Icon } from '../ui/Icon.js';
+import { useHubTab } from '../ui/useHubTab.js';
 
-type Tab = 'friends' | 'ranking' | 'stats';
+type Tab = 'friends' | 'ranking' | 'matches';
 
-/** Onglet « Amis » : amis, classement, statistiques perso (dans la coquille). */
-export function SocialScreen({ token, me }: { token: string | null; me: Account }) {
+/**
+ * Onglet « Amis » : amis, classement et parties jouées ensemble. L'en-tête et
+ * la barre d'onglets sont dans un bloc de hauteur fixe, et le contenu dans une
+ * zone à hauteur minimale : la barre reste au même endroit quel que soit l'onglet.
+ */
+export function SocialScreen({
+  token,
+  me,
+  onJoinRoom,
+}: {
+  token: string | null;
+  me: Account;
+  /** Rejoindre une salle en ligne depuis l'historique (partie encore en cours). */
+  onJoinRoom: (code: string) => void;
+}) {
   const social = useSocial(token);
   const [tab, setTab] = useState<Tab>('friends');
+  const pick = useHubTab(setTab);
 
   return (
     <div className="hub">
@@ -17,23 +33,25 @@ export function SocialScreen({ token, me }: { token: string | null; me: Account 
       </div>
 
       <div className="tabs socialtabs">
-        <button className={tab === 'friends' ? 'on' : 'ghost'} onClick={() => setTab('friends')}>
+        <button className={tab === 'friends' ? 'on' : 'ghost'} onClick={() => pick('friends')}>
           Amis{social.snapshot.requests.some((r) => r.direction === 'incoming') && <span className="badge" />}
         </button>
-        <button className={tab === 'ranking' ? 'on' : 'ghost'} onClick={() => setTab('ranking')}>Classement</button>
-        <button className={tab === 'stats' ? 'on' : 'ghost'} onClick={() => setTab('stats')}>Mes stats</button>
+        <button className={tab === 'ranking' ? 'on' : 'ghost'} onClick={() => pick('ranking')}>Classement</button>
+        <button className={tab === 'matches' ? 'on' : 'ghost'} onClick={() => pick('matches')}>Parties</button>
       </div>
 
-      {social.error && <p className="errline">{social.error}</p>}
-      {social.loading ? (
-        <p className="muted">Chargement…</p>
-      ) : tab === 'friends' ? (
-        <FriendsTab social={social} />
-      ) : tab === 'ranking' ? (
-        <RankingTab friends={social.snapshot.friends} me={me} myStats={social.stats} />
-      ) : (
-        <StatsTab stats={social.stats} />
-      )}
+      <div className="tabpane">
+        {social.error && <p className="errline">{social.error}</p>}
+        {social.loading ? (
+          <p className="muted">Chargement…</p>
+        ) : tab === 'friends' ? (
+          <FriendsTab social={social} />
+        ) : tab === 'ranking' ? (
+          <RankingTab friends={social.snapshot.friends} me={me} myStats={social.stats} />
+        ) : (
+          <MatchesTab matches={social.matches} me={me} onJoinRoom={onJoinRoom} />
+        )}
+      </div>
     </div>
   );
 }
@@ -149,6 +167,96 @@ function FriendRow({ friend, onRemove }: { friend: FriendInfo; onRemove: () => v
   );
 }
 
+// --- Onglet Parties --------------------------------------------------------
+
+const DATE_FMT = new Intl.DateTimeFormat('fr-FR', {
+  day: '2-digit',
+  month: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+/**
+ * Historique des parties en ligne : celles encore en cours en premier (on peut
+ * y retourner par le code de salle), puis les parties terminées avec les scores.
+ * Les parties solo ne sont pas ici : elles vivent dans Profil → Parties.
+ */
+function MatchesTab({
+  matches,
+  me,
+  onJoinRoom,
+}: {
+  matches: OnlineMatch[];
+  me: Account;
+  onJoinRoom: (code: string) => void;
+}) {
+  if (matches.length === 0) {
+    return (
+      <p className="muted">
+        Aucune partie en ligne pour l'instant. Elles apparaîtront ici dès que tu joueras avec au
+        moins un autre compte.
+      </p>
+    );
+  }
+
+  const live = matches.filter((m) => !m.endedAt);
+  const done = matches.filter((m) => m.endedAt);
+
+  return (
+    <div className="sociallist">
+      {live.length > 0 && (
+        <div className="panel">
+          <div className="panelhead"><h3>En cours</h3></div>
+          {live.map((m) => (
+            <MatchRow key={m.id} match={m} me={me}>
+              <button className="tiny" onClick={() => onJoinRoom(m.code)}>
+                <Icon name="play" size={14} />Reprendre
+              </button>
+            </MatchRow>
+          ))}
+        </div>
+      )}
+
+      <div className="panel">
+        <div className="panelhead"><h3>Terminées ({done.length})</h3></div>
+        {done.length === 0 ? (
+          <p className="muted">Aucune partie terminée pour l'instant.</p>
+        ) : (
+          done.map((m) => <MatchRow key={m.id} match={m} me={me} />)
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MatchRow({ match, me, children }: { match: OnlineMatch; me: Account; children?: React.ReactNode }) {
+  const when = DATE_FMT.format(new Date(match.endedAt ?? match.startedAt));
+  // Partie finie : le premier de la liste (score le plus bas) l'emporte.
+  const best = match.endedAt ? match.players[0]?.score ?? null : null;
+
+  return (
+    <div className="matchrow">
+      <div className="mr-head">
+        <span className="mr-when">{when}</span>
+        {match.endedAt ? <span className="mr-code">{match.code}</span> : <span className="mr-live">en cours</span>}
+        {children}
+      </div>
+      <div className="mr-players">
+        {match.players.map((p) => (
+          <span
+            key={p.id}
+            className={`mr-p ${p.id === me.id ? 'me' : ''} ${best !== null && p.score === best ? 'win' : ''}`}
+          >
+            <Avatar name={p.avatar} size="sm" />
+            {p.pseudo}
+            {p.score !== null && <b>{p.score}</b>}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // --- Onglet Classement -----------------------------------------------------
 
 function RankingTab({ friends, me, myStats }: { friends: FriendInfo[]; me: Account; myStats: PlayerStats }) {
@@ -183,33 +291,5 @@ function RankingTab({ friends, me, myStats }: { friends: FriendInfo[]; me: Accou
         );
       })}
     </div>
-  );
-}
-
-// --- Onglet Mes stats ------------------------------------------------------
-
-function StatsTab({ stats }: { stats: PlayerStats }) {
-  const rate = stats.games ? Math.round((stats.wins / stats.games) * 100) : 0;
-  const avg = stats.games ? Math.round(stats.totalPoints / stats.games) : 0;
-  const cards: { label: string; value: string | number }[] = [
-    { label: 'Parties jouées', value: stats.games },
-    { label: 'Victoires', value: stats.wins },
-    { label: 'Taux de victoire', value: `${rate}%` },
-    { label: 'Points / partie', value: avg },
-    { label: 'Meilleur score', value: stats.bestScore ?? '—' },
-    { label: 'Points cumulés', value: stats.totalPoints },
-  ];
-  return (
-    <>
-      {stats.games === 0 && <p className="muted">Aucune partie en ligne enregistrée. Les stats ne comptent que les parties en ligne (au moins 2 comptes).</p>}
-      <div className="statgrid">
-        {cards.map((c) => (
-          <div key={c.label} className="statcell">
-            <span className="statval">{c.value}</span>
-            <span className="statlabel">{c.label}</span>
-          </div>
-        ))}
-      </div>
-    </>
   );
 }

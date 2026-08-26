@@ -4,7 +4,14 @@ import { isValidRoomCode } from '@barbu/engine';
 import type { Account, GameResultEntry, PublicProfile, SavedGame } from '@barbu/engine';
 import { GameRoom, type Conn } from './core.js';
 import { AuthLogic, AuthError, bearerToken, type AccountRow, type AuthDB, type SessionRow } from './auth.js';
-import { SocialLogic, SocialError, MAX_SAVED_GAME_BYTES, type SocialDB, type StatsRow } from './social.js';
+import {
+  SocialLogic,
+  SocialError,
+  MAX_SAVED_GAME_BYTES,
+  type MatchRow,
+  type SocialDB,
+  type StatsRow,
+} from './social.js';
 
 /** Plafond du corps des requêtes JSON (sauvegarde de partie + marge d'encodage). */
 const MAX_BODY_BYTES = MAX_SAVED_GAME_BYTES * 2;
@@ -45,10 +52,15 @@ export class BarbuServer extends Server<Env> {
           return null; // registre injoignable → on refuse plutôt que d'ouvrir
         }
       },
-      // Fin de partie en ligne → agrège les stats des comptes dans le DO global.
-      reportResult: (entries) => {
+      // Début de partie en ligne → entrée « en cours » dans l'historique.
+      reportStart: (matchId, code, accountIds) => {
         const stub = env.Auth.get(env.Auth.idFromName('global'));
-        void stub.recordOnlineGame(entries);
+        void stub.recordOnlineStart(matchId, code, accountIds);
+      },
+      // Fin de partie en ligne → agrège les stats des comptes dans le DO global.
+      reportResult: (matchId, entries) => {
+        const stub = env.Auth.get(env.Auth.idFromName('global'));
+        void stub.recordOnlineGame(matchId, entries);
       },
     });
   }
@@ -133,6 +145,19 @@ export class AuthServer extends DurableObject<Env> {
       `CREATE TABLE IF NOT EXISTS solo_saves (account_id TEXT NOT NULL, game_id TEXT NOT NULL, state TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (account_id, game_id))`,
     );
     this.sql.exec(`CREATE TABLE IF NOT EXISTS presence (account_id TEXT PRIMARY KEY, last_seen INTEGER NOT NULL)`);
+    // Historique des parties en ligne : l'en-tête d'un côté, les participants de
+    // l'autre, pour pouvoir lister « les parties de ce compte » par un index.
+    this.sql.exec(
+      `CREATE TABLE IF NOT EXISTS matches (
+        id TEXT PRIMARY KEY, code TEXT NOT NULL, started_at TEXT NOT NULL, ended_at TEXT
+      )`,
+    );
+    this.sql.exec(
+      `CREATE TABLE IF NOT EXISTS match_players (
+        match_id TEXT NOT NULL, account_id TEXT NOT NULL, score INTEGER, PRIMARY KEY (match_id, account_id)
+      )`,
+    );
+    this.sql.exec('CREATE INDEX IF NOT EXISTS match_players_account ON match_players (account_id)');
     const sql = this.sql;
     const db: AuthDB = {
       findByPseudoLower: (p) => toRow(sql.exec('SELECT * FROM accounts WHERE pseudo_lower = ?', p)),
@@ -177,6 +202,7 @@ export class AuthServer extends DurableObject<Env> {
           expiresAt: row.expires_at == null ? 0 : Number(row.expires_at),
         } satisfies SessionRow;
       },
+      deleteAccount: (id) => void sql.exec('DELETE FROM accounts WHERE id = ?', id),
       deleteSession: (token) => void sql.exec('DELETE FROM sessions WHERE token = ?', token),
       deleteExpiredSessions: (now) =>
         void sql.exec('DELETE FROM sessions WHERE expires_at IS NULL OR expires_at <= ?', now),
@@ -254,18 +280,66 @@ export class AuthServer extends DurableObject<Env> {
         ),
       deleteSavedGame: (accountId, gameId) =>
         void sql.exec('DELETE FROM solo_saves WHERE account_id = ? AND game_id = ?', accountId, gameId),
+      openMatch: (id, code, startedAt, accountIds) => {
+        sql.exec('INSERT OR REPLACE INTO matches (id, code, started_at, ended_at) VALUES (?, ?, ?, NULL)', id, code, startedAt);
+        for (const a of accountIds) {
+          sql.exec('INSERT OR REPLACE INTO match_players (match_id, account_id, score) VALUES (?, ?, NULL)', id, a);
+        }
+      },
+      closeMatch: (id, endedAt, scores) => {
+        sql.exec('UPDATE matches SET ended_at = ? WHERE id = ?', endedAt, id);
+        for (const s of scores) {
+          sql.exec('UPDATE match_players SET score = ? WHERE match_id = ? AND account_id = ?', s.score, id, s.accountId);
+        }
+      },
+      listMatches: (accountId, limit): MatchRow[] => {
+        const heads = [
+          ...sql.exec(
+            `SELECT m.id, m.code, m.started_at, m.ended_at FROM matches m
+             JOIN match_players p ON p.match_id = m.id
+             WHERE p.account_id = ? ORDER BY m.started_at DESC LIMIT ?`,
+            accountId,
+            limit,
+          ),
+        ];
+        return heads.map((h) => ({
+          id: String(h.id),
+          code: String(h.code),
+          startedAt: String(h.started_at),
+          endedAt: h.ended_at == null ? null : String(h.ended_at),
+          players: [...sql.exec('SELECT account_id, score FROM match_players WHERE match_id = ?', String(h.id))].map((p) => ({
+            accountId: String(p.account_id),
+            score: p.score == null ? null : Number(p.score),
+          })),
+        }));
+      },
       touchPresence: (id) => void sql.exec('INSERT OR REPLACE INTO presence (account_id, last_seen) VALUES (?, ?)', id, Date.now()),
       presence: (id) => {
         const r = [...sql.exec('SELECT last_seen FROM presence WHERE account_id = ?', id)][0];
         return r ? Number(r.last_seen) : undefined;
       },
+      purgeAccount: (id) => {
+        sql.exec('DELETE FROM friendships WHERE a = ? OR b = ?', id, id);
+        sql.exec('DELETE FROM friend_requests WHERE from_id = ? OR to_id = ?', id, id);
+        sql.exec('DELETE FROM stats WHERE account_id = ?', id);
+        sql.exec('DELETE FROM solo_saves WHERE account_id = ?', id);
+        sql.exec('DELETE FROM presence WHERE account_id = ?', id);
+        sql.exec('DELETE FROM match_players WHERE account_id = ?', id);
+        // Une partie dont plus aucun participant n'existe n'a plus rien à montrer.
+        sql.exec('DELETE FROM matches WHERE id NOT IN (SELECT match_id FROM match_players)');
+      },
     };
     this.social = new SocialLogic(socialDb);
   }
 
+  /** Ouvre une partie en ligne dans l'historique (RPC depuis la salle). */
+  recordOnlineStart(matchId: string, code: string, accountIds: string[]): void {
+    this.social.startGame(matchId, code, accountIds);
+  }
+
   /** Enregistre une partie en ligne (appel de confiance depuis la salle via RPC). */
-  recordOnlineGame(entries: GameResultEntry[]): void {
-    this.social.recordGame(entries);
+  recordOnlineGame(matchId: string, entries: GameResultEntry[]): void {
+    this.social.recordGame(matchId, entries);
   }
 
   /**
@@ -309,6 +383,13 @@ export class AuthServer extends DurableObject<Env> {
           return json({ account: await this.logic.updateProfile(token, body) });
         case '/auth/password':
           return json(await this.logic.changePassword(token, body, ip));
+        case '/auth/delete': {
+          // Suppression définitive : le compte part, et avec lui toutes ses
+          // données sociales (amitiés, stats, sauvegardes, historique).
+          const { id } = await this.logic.deleteAccount(token, body, ip);
+          this.social.purge(id);
+          return json({ ok: true });
+        }
         case '/auth/logout':
           this.logic.logout(token);
           return json({ ok: true });
@@ -342,6 +423,8 @@ export class AuthServer extends DurableObject<Env> {
         return json(this.social.removeFriend(id, body.id));
       case 'POST /social/ping':
         return json({ ok: true });
+      case 'GET /social/matches':
+        return json({ matches: this.social.listMatches(id) });
       case 'GET /social/games':
         return json({ saves: this.social.listGames(id) });
       case 'POST /social/game':

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AVATARS, DEFAULT_AVATAR } from '@barbu/engine';
+import { DEFAULT_AVATAR } from '@barbu/engine';
 import {
   AuthLogic,
   AuthError,
@@ -33,6 +33,11 @@ class MemoryDB implements AuthDB {
     this.accounts.set(row.id, row);
     this.byPseudo.set(row.pseudoLower, row.id);
   }
+  deleteAccount(id: string) {
+    const row = this.accounts.get(id);
+    if (row) this.byPseudo.delete(row.pseudoLower);
+    this.accounts.delete(id);
+  }
   insertSession(row: SessionRow) {
     this.sessions.set(row.token, row);
   }
@@ -57,9 +62,9 @@ const auth = () => new AuthLogic(new MemoryDB());
 describe('comptes', () => {
   it('inscription puis connexion réussies', async () => {
     const a = auth();
-    const reg = await a.register({ pseudo: 'Vivien', password: 'secret12', avatar: 'star' });
+    const reg = await a.register({ pseudo: 'Vivien', password: 'secret12' });
     expect(reg.account.pseudo).toBe('Vivien');
-    expect(reg.account.avatar).toBe('star');
+    expect(reg.account.avatar).toBe(DEFAULT_AVATAR);
     expect(reg.token).toBeTruthy();
 
     const log = await a.login({ pseudo: 'Vivien', password: 'secret12' });
@@ -97,10 +102,11 @@ describe('comptes', () => {
 
   it('updateProfile change avatar et pseudo, revalide l’unicité', async () => {
     const a = auth();
-    const { token } = await a.register({ pseudo: 'Dan', password: 'pw123456', avatar: 'circle' });
+    const { token } = await a.register({ pseudo: 'Dan', password: 'pw123456' });
     await a.register({ pseudo: 'Eve', password: 'pw123456' });
-    const up = await a.updateProfile(token, { avatar: 'moon', pseudo: 'Danny' });
-    expect(up.avatar).toBe('moon');
+    const photo = `data:image/png;base64,${'iVBORw0KGgoAAAANSUhEUg'}AAAAEAAAABCAYAAAAfFcSJ`;
+    const up = await a.updateProfile(token, { avatar: photo, pseudo: 'Danny' });
+    expect(up.avatar).toBe(photo);
     expect(up.pseudo).toBe('Danny');
     // reconnexion possible avec le nouveau pseudo
     expect((await a.login({ pseudo: 'Danny', password: 'pw123456' })).account.id).toBe(up.id);
@@ -186,14 +192,31 @@ describe('comptes', () => {
     await expect(a.changePassword(null, { current: 'oldpass1', next: 'newpass1' })).rejects.toMatchObject({ status: 401 });
   });
 
-  it('avatar : restreint à la liste connue', async () => {
+  it('avatar : silhouette par défaut ou photo, rien d’autre', async () => {
     const a = auth();
-    // Avatar hors liste à l'inscription → on retombe sur le défaut.
+    // Avatar arbitraire à l'inscription → on retombe sur le défaut.
     const reg = await a.register({ pseudo: 'Kim', password: 'pw123456', avatar: 'x'.repeat(10_000) });
     expect(reg.account.avatar).toBe(DEFAULT_AVATAR);
     // Et refusé explicitement à la mise à jour.
     await expect(a.updateProfile(reg.token, { avatar: '<script>' })).rejects.toBeInstanceOf(AuthError);
-    expect((await a.updateProfile(reg.token, { avatar: AVATARS[3] })).avatar).toBe(AVATARS[3]);
+    await expect(a.updateProfile(reg.token, { avatar: 'star' })).rejects.toBeInstanceOf(AuthError);
+    expect((await a.updateProfile(reg.token, { avatar: DEFAULT_AVATAR })).avatar).toBe(DEFAULT_AVATAR);
+  });
+
+  it('suppression de compte : exige le mot de passe, purge sessions et pseudo', async () => {
+    const db = new MemoryDB();
+    const a = new AuthLogic(db);
+    const { token } = await a.register({ pseudo: 'Zoe', password: 'pw123456' });
+    await expect(a.deleteAccount(token, { password: 'nope' })).rejects.toMatchObject({ status: 401 });
+    await expect(a.deleteAccount(null, { password: 'pw123456' })).rejects.toMatchObject({ status: 401 });
+
+    await a.deleteAccount(token, { password: 'pw123456' });
+    expect(a.me(token)).toBeNull();
+    expect(db.accounts.size).toBe(0);
+    expect(db.sessions.size).toBe(0);
+    // Le pseudo est de nouveau disponible.
+    const again = await a.register({ pseudo: 'Zoe', password: 'pw123456' });
+    expect(again.account.pseudo).toBe('Zoe');
   });
 
   it('hashPassword : déterministe par sel, différent sinon', async () => {
