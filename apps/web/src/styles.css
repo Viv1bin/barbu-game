@@ -76,6 +76,11 @@ body {
 .app {
   max-width: 900px; margin: 0 auto; padding: 24px 16px;
   display: flex; flex-direction: column; align-items: center; gap: 16px; min-height: 100vh;
+  /* Les cartes du pli sont lancées depuis ±340 px, en dehors de l'écran sur
+     mobile : on rogne cette marge d'animation plutôt que de laisser la page
+     défiler latéralement. `clip` plutôt que `hidden` pour ne pas créer de
+     conteneur de défilement, qui rognerait aussi en hauteur. */
+  overflow-x: clip;
 }
 .app > * { width: 100%; }
 
@@ -288,7 +293,10 @@ footer { border-top: 1px solid var(--border); padding-top: 10px; }
 /* --- Table de jeu --------------------------------------------------------- */
 .app.solo { max-width: 860px; }
 .poker-table {
-  position: relative; width: 100%; max-width: 720px; height: 440px; margin: 26px auto;
+  /* Les sièges latéraux sont posés 20 px en dehors de l'ovale : la table laisse
+     donc 22 px de marge de chaque côté, sinon ils sortent de l'écran dès que la
+     fenêtre descend sous ~750 px. */
+  position: relative; width: calc(100% - 44px); max-width: 720px; height: 440px; margin: 26px auto;
   border-radius: 220px / 180px;
   background: var(--felt);
   border: 1px solid var(--border-strong);
@@ -740,7 +748,30 @@ footer { border-top: 1px solid var(--border); padding-top: 10px; }
 
 /* --- Adaptatif ------------------------------------------------------------ */
 @media (max-width: 560px) {
-  .poker-table { height: 380px; border-radius: 180px / 150px; }
+  /* Sièges latéraux à l'intérieur ici : la table peut reprendre toute la
+     largeur, il n'y a plus rien à loger sur les côtés. */
+  .poker-table { width: 100%; height: 420px; border-radius: 180px / 150px; }
+
+  /* Sièges compacts : à pleine taille, les deux latéraux sont plus larges que
+     la marge disponible. */
+  .seat { padding: 5px 8px; gap: 6px; }
+  .seat .avatar { width: 28px; height: 28px; }
+  .sname { font-size: .72rem; }
+  .sscore { font-size: .92rem; }
+  .scards { font-size: .68rem; }
+  .scards b { font-size: .85rem; }
+
+  /* Les sièges latéraux passent à l'intérieur de l'ovale : posés dehors, ils
+     débordaient du viewport (coupés, sans marge). Et ils remontent au-dessus
+     du centre, sinon ils recouvrent l'annonce et les cartes du pli, qui
+     s'étalent à ±60 px de part et d'autre du milieu. */
+  .seat-left { left: 6px; top: 20%; transform: translateY(-50%); }
+  .seat-right { right: 6px; top: 20%; transform: translateY(-50%); }
+  .seat-top { top: -22px; }
+  .seat-bottom { bottom: -22px; }
+  /* Le contenu central descend d'autant : même une annonce haute (le pli, la
+     question du contre) reste sous les sièges latéraux. */
+  .table-center { top: 54%; }
   .pcard.md { width: 50px; height: 71px; }
   .pcard.md .pip { font-size: 1.8rem; }
   .pcard.md .corner { font-size: .72rem; }
