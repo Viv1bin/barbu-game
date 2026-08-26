@@ -1,5 +1,7 @@
 import type { Auth } from './auth/useAuth.js';
 import { Icon, type IconName } from './ui/Icon.js';
+import { Avatar } from './ui/Avatar.js';
+import { useLiveMatches } from './social/useSocial.js';
 
 export type Screen = 'menu' | 'solo' | 'online' | 'settings' | 'social' | 'rules';
 
@@ -8,9 +10,22 @@ const MODES: { id: Screen; icon: IconName; title: string; desc: string; disabled
   { id: 'online', icon: 'globe', title: 'En ligne', desc: 'À 4 en temps réel. Code de partie, sièges bots ou amis.' },
 ];
 
-/** Onglet « Jouer » : choix du mode de jeu. */
-export function Menu({ onPick, auth }: { onPick: (s: Screen) => void; auth: Auth }) {
+/** Onglet « Jouer » : choix du mode, plus la reprise des parties en ligne en cours. */
+export function Menu({
+  onPick,
+  auth,
+  onJoinRoom,
+}: {
+  onPick: (s: Screen) => void;
+  auth: Auth;
+  /** Retourne directement dans une salle en ligne (partie quittée en cours de route). */
+  onJoinRoom: (code: string) => void;
+}) {
   const me = auth.account;
+  // Quitter une partie en ligne renvoie au menu sans la clore : elle reste
+  // ouverte côté serveur, on la propose donc ici plutôt que dans l'onglet Amis.
+  const live = useLiveMatches(auth.token);
+
   return (
     <div className="hub">
       <div className="hubhead">
@@ -32,6 +47,26 @@ export function Menu({ onPick, auth }: { onPick: (s: Screen) => void; auth: Auth
           </button>
         ))}
       </div>
+
+      {live.length > 0 && (
+        <div className="panel resumepanel">
+          <div className="panelhead"><h3>Parties en cours</h3></div>
+          {live.map((m) => (
+            <div key={m.id} className="resumerow">
+              <span className="resumewho">
+                {m.players
+                  .filter((p) => p.id !== me?.id)
+                  .map((p) => (
+                    <span key={p.id} className="mr-p"><Avatar name={p.avatar} size="sm" />{p.pseudo}</span>
+                  ))}
+              </span>
+              <button className="tiny" onClick={() => onJoinRoom(m.code)}>
+                <Icon name="play" size={14} />Reprendre
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

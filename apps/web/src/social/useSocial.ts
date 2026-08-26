@@ -102,6 +102,26 @@ export function useSocial(token: string | null): Social {
 }
 
 /**
+ * Parties en ligne non terminées du compte, pour proposer la reprise depuis
+ * l'onglet « Jouer ». Chargées une fois au montage : l'onglet est démonté quand
+ * on le quitte, donc y revenir suffit à rafraîchir la liste.
+ */
+export function useLiveMatches(token: string | null): OnlineMatch[] {
+  const [live, setLive] = useState<OnlineMatch[]>([]);
+  useEffect(() => {
+    if (!token) return;
+    let alive = true;
+    apiFetch<{ matches: OnlineMatch[] }>('/social/matches', { token })
+      .then((r) => alive && setLive(r.matches.filter((m) => !m.endedAt)))
+      .catch(() => {}); // pas de reprise proposée : l'écran « En ligne » reste accessible
+    return () => {
+      alive = false;
+    };
+  }, [token]);
+  return live;
+}
+
+/**
  * Battement de présence global : signale l'utilisateur « en ligne » tant que
  * l'app est ouverte, quel que soit l'écran (les amis le voient connecté).
  */

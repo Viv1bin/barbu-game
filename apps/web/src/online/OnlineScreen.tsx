@@ -3,6 +3,7 @@ import { currentActor, isValidRoomCode, randomRoomCode, ROOM_CODE_LENGTH, type A
 import { GameTable, type SeatLabel, type TableView } from '../game/GameTable.js';
 import { OnlineLobby } from './OnlineLobby.js';
 import { useOnlineGame, type OnlineIdentity } from './useOnlineGame.js';
+import { PlayerProfileModal } from '../social/PlayerProfile.js';
 import { Avatar } from '../ui/Avatar.js';
 import { Icon } from '../ui/Icon.js';
 
@@ -49,7 +50,9 @@ export function OnlineScreen({
   };
 
   if (!session) return <OnlineLanding account={account} onBack={onBack} onEnter={enter} />;
-  return <OnlineRoom code={session.code} me={me} onLeave={() => setSession(null)} onMenu={onBack} />;
+  return (
+    <OnlineRoom code={session.code} me={me} token={token} onLeave={() => setSession(null)} onMenu={onBack} />
+  );
 }
 
 function OnlineLanding({
@@ -110,10 +113,31 @@ function OnlineLanding({
   );
 }
 
-function OnlineRoom({ code, me, onLeave, onMenu }: { code: string; me: OnlineIdentity; onLeave: () => void; onMenu: () => void }) {
+function OnlineRoom({
+  code,
+  me,
+  token,
+  onLeave,
+  onMenu,
+}: {
+  code: string;
+  me: OnlineIdentity;
+  token: string | null;
+  onLeave: () => void;
+  onMenu: () => void;
+}) {
   const game = useOnlineGame(code, me);
+  // Fiche d'un adversaire, ouverte depuis son siège (null = fermée).
+  const [profileId, setProfileId] = useState<string | null>(null);
 
-  if (!game.started || !game.view) return <OnlineLobby game={game} code={code} onBack={onLeave} />;
+  if (!game.started || !game.view) {
+    return (
+      <>
+        <OnlineLobby game={game} code={code} onBack={onLeave} onShowProfile={setProfileId} />
+        {profileId && <PlayerProfileModal id={profileId} token={token} onClose={() => setProfileId(null)} />}
+      </>
+    );
+  }
 
   const view = game.view;
   const halted = game.halt.paused || game.halt.absent.length > 0;
@@ -123,6 +147,7 @@ function OnlineRoom({ code, me, onLeave, onMenu }: { code: string; me: OnlineIde
       name: s?.name ?? (s?.kind === 'bot' ? 'Bot' : 'Libre'),
       avatar: s?.avatar ?? (s?.kind === 'bot' ? 'bot' : 'seat'),
       bot: s?.kind !== 'human',
+      profileId: s?.profileId,
     };
   });
 
@@ -146,6 +171,7 @@ function OnlineRoom({ code, me, onLeave, onMenu }: { code: string; me: OnlineIde
       reussitePass: game.reussitePass,
     },
     lastDeal: null,
+    onShowProfile: setProfileId,
     onNewGame: game.isHost && view.phase === 'DONE' ? game.newGame : undefined,
     room: {
       isHost: game.isHost,
@@ -159,5 +185,10 @@ function OnlineRoom({ code, me, onLeave, onMenu }: { code: string; me: OnlineIde
     },
   };
 
-  return <GameTable view={table} title={`en ligne · ${code}`} onBack={onMenu} />;
+  return (
+    <>
+      <GameTable view={table} title={`en ligne · ${code}`} onBack={onMenu} />
+      {profileId && <PlayerProfileModal id={profileId} token={token} onClose={() => setProfileId(null)} />}
+    </>
+  );
 }

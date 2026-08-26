@@ -21,7 +21,18 @@ const LEVELS: { id: Difficulty; label: string }[] = [
 ];
 
 /** Salon d'attente : code partageable + configuration des sièges par l'hôte. */
-export function OnlineLobby({ game, code, onBack }: { game: OnlineGame; code: string; onBack: () => void }) {
+export function OnlineLobby({
+  game,
+  code,
+  onBack,
+  onShowProfile,
+}: {
+  game: OnlineGame;
+  code: string;
+  onBack: () => void;
+  /** Ouvre la fiche du joueur assis sur un siège. */
+  onShowProfile: (profileId: string) => void;
+}) {
   const { seats, youSeat, isHost } = game;
   const [options, setOptions] = useState<MatchOptions>(DEFAULT_MATCH_OPTIONS);
   const link = `${location.origin}${location.pathname}?room=${code}`;
@@ -48,7 +59,14 @@ export function OnlineLobby({ game, code, onBack }: { game: OnlineGame; code: st
 
         <div className="seatgrid">
           {seats.map((s) => (
-            <SeatSlot key={s.seat} seat={s} you={youSeat} isHost={isHost} onConfigure={game.configureSeat} />
+            <SeatSlot
+              key={s.seat}
+              seat={s}
+              you={youSeat}
+              isHost={isHost}
+              onConfigure={game.configureSeat}
+              onShowProfile={onShowProfile}
+            />
           ))}
         </div>
 
@@ -82,11 +100,13 @@ function SeatSlot({
   you,
   isHost,
   onConfigure,
+  onShowProfile,
 }: {
   seat: SeatInfo;
   you: PlayerId | null;
   isHost: boolean;
   onConfigure: (seat: PlayerId, kind: 'open' | 'bot', level?: Difficulty) => void;
+  onShowProfile: (profileId: string) => void;
 }) {
   const mine = seat.seat === you;
   return (
@@ -95,7 +115,14 @@ function SeatSlot({
 
       {seat.kind === 'human' && (
         <>
-          <Avatar name={seat.avatar} size="lg" />
+          {/* Avatar cliquable : la fiche du joueur (stats en ligne) s'ouvre par-dessus. */}
+          {seat.profileId ? (
+            <button className="avatartap" onClick={() => onShowProfile(seat.profileId!)} aria-label={`Profil de ${seat.name}`}>
+              <Avatar name={seat.avatar} size="lg" />
+            </button>
+          ) : (
+            <Avatar name={seat.avatar} size="lg" />
+          )}
           <div className="pfname">{seat.name}</div>
           {seat.connected === false && <div className="muted">déconnecté…</div>}
         </>

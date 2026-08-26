@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import type { Account, FriendInfo, FriendRequestInfo, OnlineMatch, PlayerStats } from '@barbu/engine';
 import { ApiError, useSocial } from './useSocial.js';
 import { Avatar } from '../ui/Avatar.js';
-import { Icon } from '../ui/Icon.js';
 import { useHubTab } from '../ui/useHubTab.js';
 
 type Tab = 'friends' | 'ranking' | 'matches';
@@ -12,16 +11,7 @@ type Tab = 'friends' | 'ranking' | 'matches';
  * la barre d'onglets sont dans un bloc de hauteur fixe, et le contenu dans une
  * zone à hauteur minimale : la barre reste au même endroit quel que soit l'onglet.
  */
-export function SocialScreen({
-  token,
-  me,
-  onJoinRoom,
-}: {
-  token: string | null;
-  me: Account;
-  /** Rejoindre une salle en ligne depuis l'historique (partie encore en cours). */
-  onJoinRoom: (code: string) => void;
-}) {
+export function SocialScreen({ token, me }: { token: string | null; me: Account }) {
   const social = useSocial(token);
   const [tab, setTab] = useState<Tab>('friends');
   const pick = useHubTab(setTab);
@@ -49,7 +39,7 @@ export function SocialScreen({
         ) : tab === 'ranking' ? (
           <RankingTab friends={social.snapshot.friends} me={me} myStats={social.stats} />
         ) : (
-          <MatchesTab matches={social.matches} me={me} onJoinRoom={onJoinRoom} />
+          <MatchesTab matches={social.matches} me={me} />
         )}
       </div>
     </div>
@@ -177,69 +167,43 @@ const DATE_FMT = new Intl.DateTimeFormat('fr-FR', {
 });
 
 /**
- * Historique des parties en ligne : celles encore en cours en premier (on peut
- * y retourner par le code de salle), puis les parties terminées avec les scores.
- * Les parties solo ne sont pas ici : elles vivent dans Profil → Parties.
+ * Historique des parties en ligne **terminées**, avec les scores. Les parties
+ * encore en cours ne sont pas ici mais dans l'onglet « Jouer » : c'est de là
+ * qu'on reprend une partie, pas de la page des amis. Les parties solo, elles,
+ * vivent dans Profil → Parties.
  */
-function MatchesTab({
-  matches,
-  me,
-  onJoinRoom,
-}: {
-  matches: OnlineMatch[];
-  me: Account;
-  onJoinRoom: (code: string) => void;
-}) {
-  if (matches.length === 0) {
+function MatchesTab({ matches, me }: { matches: OnlineMatch[]; me: Account }) {
+  const done = matches.filter((m) => m.endedAt);
+
+  if (done.length === 0) {
     return (
       <p className="muted">
-        Aucune partie en ligne pour l'instant. Elles apparaîtront ici dès que tu joueras avec au
-        moins un autre compte.
+        Aucune partie en ligne terminée pour l'instant. Elles apparaîtront ici dès que tu joueras
+        avec au moins un autre compte.
       </p>
     );
   }
 
-  const live = matches.filter((m) => !m.endedAt);
-  const done = matches.filter((m) => m.endedAt);
-
   return (
     <div className="sociallist">
-      {live.length > 0 && (
-        <div className="panel">
-          <div className="panelhead"><h3>En cours</h3></div>
-          {live.map((m) => (
-            <MatchRow key={m.id} match={m} me={me}>
-              <button className="tiny" onClick={() => onJoinRoom(m.code)}>
-                <Icon name="play" size={14} />Reprendre
-              </button>
-            </MatchRow>
-          ))}
-        </div>
-      )}
-
       <div className="panel">
         <div className="panelhead"><h3>Terminées ({done.length})</h3></div>
-        {done.length === 0 ? (
-          <p className="muted">Aucune partie terminée pour l'instant.</p>
-        ) : (
-          done.map((m) => <MatchRow key={m.id} match={m} me={me} />)
-        )}
+        {done.map((m) => <MatchRow key={m.id} match={m} me={me} />)}
       </div>
     </div>
   );
 }
 
-function MatchRow({ match, me, children }: { match: OnlineMatch; me: Account; children?: React.ReactNode }) {
+function MatchRow({ match, me }: { match: OnlineMatch; me: Account }) {
   const when = DATE_FMT.format(new Date(match.endedAt ?? match.startedAt));
   // Partie finie : le premier de la liste (score le plus bas) l'emporte.
-  const best = match.endedAt ? match.players[0]?.score ?? null : null;
+  const best = match.players[0]?.score ?? null;
 
   return (
     <div className="matchrow">
       <div className="mr-head">
         <span className="mr-when">{when}</span>
-        {match.endedAt ? <span className="mr-code">{match.code}</span> : <span className="mr-live">en cours</span>}
-        {children}
+        <span className="mr-code">{match.code}</span>
       </div>
       <div className="mr-players">
         {match.players.map((p) => (

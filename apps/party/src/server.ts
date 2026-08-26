@@ -421,6 +421,8 @@ export class AuthServer extends DurableObject<Env> {
         return json(this.social.snapshot(id));
       case 'GET /social/stats':
         return json({ stats: this.social.myStats(id) });
+      case 'POST /social/profile':
+        return json(this.social.publicProfile(id, body.id));
       case 'POST /social/request':
         return json(this.social.sendRequest(id, body.pseudo));
       case 'POST /social/respond':

@@ -500,6 +500,7 @@ export class GameRoom {
     return this.seats.map((s, i) => ({
       seat: i as PlayerId,
       kind: s.kind,
+      profileId: s.kind === 'human' ? s.profileId : undefined,
       name: s.name,
       avatar: s.avatar,
       level: s.kind === 'bot' ? s.level : undefined,
