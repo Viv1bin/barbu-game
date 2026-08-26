@@ -33,6 +33,10 @@ export interface MatchRow {
   code: string;
   startedAt: string;
   endedAt: string | null;
+  /** Créateur de la salle ; null pour les parties d'avant son enregistrement. */
+  ownerId: string | null;
+  manches: number;
+  totalManches: number;
   players: { accountId: string; score: number | null }[];
 }
 
@@ -73,9 +77,22 @@ export interface SocialDB {
   deleteSavedGame(accountId: string, gameId: string): void;
 
   /** Ouvre (ou réécrit) une partie en ligne avec ses participants, scores inconnus. */
-  openMatch(id: string, code: string, startedAt: string, accountIds: string[]): void;
+  openMatch(
+    id: string,
+    code: string,
+    startedAt: string,
+    accountIds: string[],
+    ownerId: string | null,
+    totalManches: number,
+  ): void;
   /** Clôt une partie en ligne : date de fin + score de chaque participant. */
   closeMatch(id: string, endedAt: string, scores: GameResultEntry[]): void;
+  /** Met à jour le nombre de manches jouées d'une partie en cours. */
+  setMatchProgress(id: string, manches: number): void;
+  /** En-tête d'une partie (sans les participants), ou undefined si inconnue. */
+  getMatch(id: string): MatchRow | undefined;
+  /** Supprime une partie de l'historique de tous ses participants. */
+  deleteMatch(id: string): void;
   /** Parties en ligne où `accountId` a joué, plus récente d'abord. */
   listMatches(accountId: string, limit: number): MatchRow[];
 
@@ -274,11 +291,35 @@ export class SocialLogic {
    * que les tables où au moins deux comptes réels s'affrontent : une partie
    * contre des bots n'a rien à faire dans l'historique partagé.
    */
-  startGame(matchId: string, code: string, accountIds: string[]): { recorded: boolean } {
+  startGame(
+    matchId: string,
+    code: string,
+    accountIds: string[],
+    ownerId: string | null = null,
+    totalManches = 0,
+  ): { recorded: boolean } {
     const valid = accountIds.filter((id) => id && this.db.findById(id));
     if (valid.length < 2) return { recorded: false };
-    this.db.openMatch(matchId, code, new Date(this.now()).toISOString(), valid);
+    this.db.openMatch(matchId, code, new Date(this.now()).toISOString(), valid, ownerId, totalManches);
     return { recorded: true };
+  }
+
+  /** Avancement d'une partie en cours (manches terminées), remonté par la salle. */
+  progressGame(matchId: string, manches: number): void {
+    if (this.db.getMatch(matchId)) this.db.setMatchProgress(matchId, Math.max(0, Math.floor(manches)));
+  }
+
+  /**
+   * Supprime une partie de l'historique. Réservé au créateur de la salle :
+   * l'entrée est partagée par tous les participants, un joueur ne peut pas
+   * l'effacer chez les autres. Irréversible — la confirmation est côté client.
+   */
+  deleteMatch(viewerId: string, matchId: unknown): { ok: true } {
+    const match = this.db.getMatch(String(matchId ?? ''));
+    if (!match) throw new SocialError('Partie introuvable.', 404);
+    if (match.ownerId !== viewerId) throw new SocialError('Seul le créateur de la partie peut la supprimer.', 403);
+    this.db.deleteMatch(match.id);
+    return { ok: true };
   }
 
   /** Historique des parties en ligne du compte, pseudos et avatars résolus. */
@@ -288,6 +329,9 @@ export class SocialLogic {
       code: m.code,
       startedAt: m.startedAt,
       endedAt: m.endedAt,
+      ownerId: m.ownerId,
+      manches: m.manches,
+      totalManches: m.totalManches,
       players: m.players
         .map((p) => {
           const profile = this.db.findById(p.accountId);

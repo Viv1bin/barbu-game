@@ -3,6 +3,7 @@ import {
   autoAction,
   createMatch,
   normalizeMatchOptions,
+  totalManches,
   DEFAULT_MATCH_OPTIONS,
   type MatchOptions,
   currentActor,
@@ -92,7 +93,9 @@ export interface RoomHost {
    */
   resolveAccount(token: string): Promise<Account | null>;
   /** Début d'une partie (comptes humains) → historique des parties en ligne. */
-  reportStart?(matchId: string, code: string, accountIds: string[]): void;
+  reportStart?(matchId: string, code: string, accountIds: string[], ownerId: string | null, totalManches: number): void;
+  /** Manches terminées → avancement affiché dans « Parties en cours ». */
+  reportProgress?(matchId: string, manches: number): void;
   /** Résultat d'une partie terminée (comptes humains + scores) → stats en ligne. */
   reportResult?(matchId: string, entries: GameResultEntry[]): void;
   /** Relit l'état de la salle au réveil de l'instance (null si aucune partie). */
@@ -427,6 +430,8 @@ export class GameRoom {
         contres: m.contres,
         points: next.scores.map((sc, p) => sc - m.scores[p]!),
       });
+      // Une manche de plus : l'historique affiche l'avancement de la partie.
+      if (this.matchId) this.room.reportProgress?.(this.matchId, next.mancheCount);
     }
     if (m.phase !== 'DONE' && next.phase === 'DONE') this.reportGameEnd(next);
     this.match = next;
@@ -441,7 +446,9 @@ export class GameRoom {
   private reportGameStart() {
     this.matchId = `${this.room.id}:${Date.now()}`;
     const accountIds = this.seats.filter((s) => s.kind === 'human' && s.profileId).map((s) => s.profileId!);
-    if (accountIds.length >= 2) this.room.reportStart?.(this.matchId, this.room.id, accountIds);
+    if (accountIds.length >= 2) {
+      this.room.reportStart?.(this.matchId, this.room.id, accountIds, this.ownerId, totalManches(this.options));
+    }
   }
 
   /** Fin de partie : remonte les scores finaux des sièges humains (comptes). */

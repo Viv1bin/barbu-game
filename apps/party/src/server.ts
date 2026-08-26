@@ -56,9 +56,14 @@ export class BarbuServer extends Server<Env> {
         }
       },
       // Début de partie en ligne → entrée « en cours » dans l'historique.
-      reportStart: (matchId, code, accountIds) => {
+      reportStart: (matchId, code, accountIds, ownerId, totalManches) => {
         const stub = env.Auth.get(env.Auth.idFromName('global'));
-        void stub.recordOnlineStart(matchId, code, accountIds);
+        void stub.recordOnlineStart(matchId, code, accountIds, ownerId, totalManches);
+      },
+      // Avancement d'une partie en cours (une écriture par manche).
+      reportProgress: (matchId, manches) => {
+        const stub = env.Auth.get(env.Auth.idFromName('global'));
+        void stub.recordOnlineProgress(matchId, manches);
       },
       // Fin de partie en ligne → agrège les stats des comptes dans le DO global.
       reportResult: (matchId, entries) => {
@@ -90,6 +95,19 @@ export class BarbuServer extends Server<Env> {
 // ===========================================================================
 // Comptes — Durable Object global unique + implémentation SQLite de AuthDB.
 // ===========================================================================
+
+/** En-tête d'une partie en ligne, sans ses participants. */
+function toMatchHead(h: Record<string, SqlStorageValue>): Omit<MatchRow, 'players'> {
+  return {
+    id: String(h.id),
+    code: String(h.code),
+    startedAt: String(h.started_at),
+    endedAt: h.ended_at == null ? null : String(h.ended_at),
+    ownerId: h.owner_id == null ? null : String(h.owner_id),
+    manches: Number(h.manches ?? 0),
+    totalManches: Number(h.total_manches ?? 0),
+  };
+}
 
 /** Traduit une ligne SQL en `AccountRow` typée. */
 function toAccountRow(r: Record<string, SqlStorageValue>): AccountRow {
@@ -157,9 +175,19 @@ export class AuthServer extends DurableObject<Env> {
     // l'autre, pour pouvoir lister « les parties de ce compte » par un index.
     this.sql.exec(
       `CREATE TABLE IF NOT EXISTS matches (
-        id TEXT PRIMARY KEY, code TEXT NOT NULL, started_at TEXT NOT NULL, ended_at TEXT
+        id TEXT PRIMARY KEY, code TEXT NOT NULL, started_at TEXT NOT NULL, ended_at TEXT,
+        owner_id TEXT, manches INTEGER NOT NULL DEFAULT 0, total_manches INTEGER NOT NULL DEFAULT 0
       )`,
     );
+    // Tables créées avant la progression et le créateur : SQLite n'a pas d'ADD
+    // COLUMN IF NOT EXISTS, on tente et on ignore l'erreur « duplicate column ».
+    for (const col of ['owner_id TEXT', 'manches INTEGER NOT NULL DEFAULT 0', 'total_manches INTEGER NOT NULL DEFAULT 0']) {
+      try {
+        this.sql.exec(`ALTER TABLE matches ADD COLUMN ${col}`);
+      } catch {
+        /* colonne déjà présente */
+      }
+    }
     this.sql.exec(
       `CREATE TABLE IF NOT EXISTS match_players (
         match_id TEXT NOT NULL, account_id TEXT NOT NULL, score INTEGER, PRIMARY KEY (match_id, account_id)
@@ -288,8 +316,16 @@ export class AuthServer extends DurableObject<Env> {
         ),
       deleteSavedGame: (accountId, gameId) =>
         void sql.exec('DELETE FROM solo_saves WHERE account_id = ? AND game_id = ?', accountId, gameId),
-      openMatch: (id, code, startedAt, accountIds) => {
-        sql.exec('INSERT OR REPLACE INTO matches (id, code, started_at, ended_at) VALUES (?, ?, ?, NULL)', id, code, startedAt);
+      openMatch: (id, code, startedAt, accountIds, ownerId, totalManches) => {
+        sql.exec(
+          `INSERT OR REPLACE INTO matches (id, code, started_at, ended_at, owner_id, manches, total_manches)
+           VALUES (?, ?, ?, NULL, ?, 0, ?)`,
+          id,
+          code,
+          startedAt,
+          ownerId,
+          totalManches,
+        );
         for (const a of accountIds) {
           sql.exec('INSERT OR REPLACE INTO match_players (match_id, account_id, score) VALUES (?, ?, NULL)', id, a);
         }
@@ -300,10 +336,19 @@ export class AuthServer extends DurableObject<Env> {
           sql.exec('UPDATE match_players SET score = ? WHERE match_id = ? AND account_id = ?', s.score, id, s.accountId);
         }
       },
+      setMatchProgress: (id, manches) => void sql.exec('UPDATE matches SET manches = ? WHERE id = ?', manches, id),
+      getMatch: (id): MatchRow | undefined => {
+        const h = [...sql.exec('SELECT * FROM matches WHERE id = ?', id)][0];
+        return h ? { ...toMatchHead(h), players: [] } : undefined;
+      },
+      deleteMatch: (id) => {
+        sql.exec('DELETE FROM match_players WHERE match_id = ?', id);
+        sql.exec('DELETE FROM matches WHERE id = ?', id);
+      },
       listMatches: (accountId, limit): MatchRow[] => {
         const heads = [
           ...sql.exec(
-            `SELECT m.id, m.code, m.started_at, m.ended_at FROM matches m
+            `SELECT m.id, m.code, m.started_at, m.ended_at, m.owner_id, m.manches, m.total_manches FROM matches m
              JOIN match_players p ON p.match_id = m.id
              WHERE p.account_id = ? ORDER BY m.started_at DESC LIMIT ?`,
             accountId,
@@ -311,10 +356,7 @@ export class AuthServer extends DurableObject<Env> {
           ),
         ];
         return heads.map((h) => ({
-          id: String(h.id),
-          code: String(h.code),
-          startedAt: String(h.started_at),
-          endedAt: h.ended_at == null ? null : String(h.ended_at),
+          ...toMatchHead(h),
           players: [...sql.exec('SELECT account_id, score FROM match_players WHERE match_id = ?', String(h.id))].map((p) => ({
             accountId: String(p.account_id),
             score: p.score == null ? null : Number(p.score),
@@ -341,8 +383,19 @@ export class AuthServer extends DurableObject<Env> {
   }
 
   /** Ouvre une partie en ligne dans l'historique (RPC depuis la salle). */
-  recordOnlineStart(matchId: string, code: string, accountIds: string[]): void {
-    this.social.startGame(matchId, code, accountIds);
+  recordOnlineStart(
+    matchId: string,
+    code: string,
+    accountIds: string[],
+    ownerId: string | null = null,
+    totalManches = 0,
+  ): void {
+    this.social.startGame(matchId, code, accountIds, ownerId, totalManches);
+  }
+
+  /** Avancement d'une partie en cours, remonté à chaque fin de manche (RPC). */
+  recordOnlineProgress(matchId: string, manches: number): void {
+    this.social.progressGame(matchId, manches);
   }
 
   /** Enregistre une partie en ligne (appel de confiance depuis la salle via RPC). */
@@ -435,6 +488,8 @@ export class AuthServer extends DurableObject<Env> {
         return json({ ok: true });
       case 'GET /social/matches':
         return json({ matches: this.social.listMatches(id) });
+      case 'POST /social/match/delete':
+        return json(this.social.deleteMatch(id, body.id));
       case 'GET /social/games':
         return json({ saves: this.social.listGames(id) });
       case 'POST /social/game':
