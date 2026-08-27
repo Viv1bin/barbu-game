@@ -532,6 +532,72 @@ footer { border-top: 1px solid var(--border); padding-top: 10px; }
 .rname { width: 78px; flex: none; font-size: .75rem; color: var(--muted); }
 .rhand { display: flex; flex-wrap: wrap; gap: 2px; }
 
+/* --- Récapitulatif de fin de manche ---------------------------------------- */
+/* Le fond ne capte rien : la partie continue derrière, on doit pouvoir jouer
+   sans attendre la fin de l'animation (le panneau, lui, reste cliquable). */
+.recap-back {
+  position: fixed; inset: 0; z-index: 60; pointer-events: none;
+  display: flex; align-items: center; justify-content: center; padding: 16px;
+}
+.recap {
+  pointer-events: auto; width: 100%; max-width: 420px;
+  background: var(--surface); border: 1px solid var(--accent); border-radius: var(--r-lg);
+  box-shadow: var(--shadow-3); padding: 16px;
+  display: flex; flex-direction: column; gap: 12px;
+  animation: recap-in .35s cubic-bezier(.2, .8, .3, 1) both;
+}
+@keyframes recap-in {
+  from { transform: translateY(14px) scale(.96); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+.rc-head { text-align: center; display: flex; flex-direction: column; gap: 2px; }
+.rc-step { font-size: .7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.rc-head h3 { margin: 0; font-size: 1.05rem; display: inline-flex; align-items: center; justify-content: center; gap: 8px; color: var(--accent); }
+.rc-dealer { font-size: .75rem; color: var(--muted); }
+/* Chaque ligne est posée en absolu à la hauteur de son rang : changer de place,
+   c'est une transition de `transform`, pas un ré-ordonnancement du DOM. */
+.rc-board { position: relative; }
+.rc-row {
+  position: absolute; left: 0; right: 0; height: 40px;
+  display: flex; align-items: center; gap: 9px; padding: 0 10px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md);
+  transition: transform .55s cubic-bezier(.5, 0, .2, 1), border-color .3s ease;
+}
+.rc-row.me { border-color: var(--border-strong); }
+.rc-row.lead { border-color: var(--accent); }
+.rc-pos { width: 16px; font-weight: 700; color: var(--muted); font-size: .8rem; }
+.rc-name { flex: 1; font-size: .88rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-delta {
+  font-size: .82rem; font-weight: 700; min-width: 38px; text-align: right;
+  animation: rc-pop .4s ease both; animation-delay: var(--d, 0s);
+}
+.rc-delta.neg { color: var(--danger); }
+.rc-delta.pos { color: var(--success); }
+.rc-delta.zero { color: var(--muted); }
+.rc-total { font-size: .8rem; color: var(--muted); min-width: 54px; text-align: right; }
+@keyframes rc-pop {
+  from { transform: scale(.6); opacity: 0; }
+  60% { transform: scale(1.15); opacity: 1; }
+  to { transform: none; opacity: 1; }
+}
+.rc-close { align-self: center; }
+
+/* --- Dernier pli ----------------------------------------------------------- */
+.lasttrick-modal { max-width: 400px; align-items: center; text-align: center; }
+.lasttrick-modal .topbar h2 { flex: 1; margin: 0; font-size: 1.05rem; }
+.lt-zone { position: relative; height: 210px; width: 100%; }
+.lt-card {
+  position: absolute; top: 50%; left: 50%; margin: -49px 0 0 -35px;
+  animation: deal .5s cubic-bezier(.2, .8, .3, 1) both; animation-delay: var(--d, 0s);
+}
+.lt-card .pcard { box-shadow: var(--shadow-2); }
+.lt-card.win .pcard { outline: 2px solid var(--success); outline-offset: 1px; }
+.lt-who {
+  position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+  margin-top: 4px; font-size: .64rem; color: var(--muted); white-space: nowrap;
+}
+.lt-note { margin: 0; color: var(--accent); display: inline-flex; align-items: center; gap: 8px; }
+
 /* --- Modales -------------------------------------------------------------- */
 .modal-back {
   position: fixed; inset: 0; background: rgba(47, 42, 37, 0.32);

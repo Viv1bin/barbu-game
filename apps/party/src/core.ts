@@ -24,7 +24,9 @@ import {
 } from '@barbu/engine';
 
 /** Délais d'animation (mutables : les tests les mettent à 0 pour accélérer). */
-export const TIMING = { botDelay: 650, pauseMs: 1400 };
+// `botDelay` n'est pas un temps de calcul : c'est le temps qu'il faut aux
+// joueurs pour lire la carte qui tombe. Trop court, la table se vide toute seule.
+export const TIMING = { botDelay: 1100, pauseMs: 1400 };
 const DEFAULT_LEVEL: Difficulty = 'difficile';
 const SEATS: PlayerId[] = [0, 1, 2, 3];
 

@@ -259,6 +259,7 @@ function SoloGameView({
     handSizes,
     history: game.history,
     pause: game.pause,
+    lastTrick: game.lastTrick,
     hint: game.hint,
     actor: currentActor(state),
     busy: game.busy,
