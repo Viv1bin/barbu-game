@@ -96,6 +96,8 @@ export interface RoomHost {
   reportStart?(matchId: string, code: string, accountIds: string[], ownerId: string | null, totalManches: number): void;
   /** Manches terminées → avancement affiché dans « Parties en cours ». */
   reportProgress?(matchId: string, manches: number): void;
+  /** Pause de l'hôte → « à reprendre » plutôt que « à rejoindre » au menu. */
+  reportPaused?(matchId: string, paused: boolean): void;
   /** Résultat d'une partie terminée (comptes humains + scores) → stats en ligne. */
   reportResult?(matchId: string, entries: GameResultEntry[]): void;
   /** Relit l'état de la salle au réveil de l'instance (null si aucune partie). */
@@ -325,6 +327,9 @@ export class GameRoom {
     if (!this.started) return;
     this.paused = paused;
     this.asks = []; // la décision de l'hôte tranche les demandes en attente
+    // L'historique distingue une partie mise en pause d'une partie qu'on a
+    // seulement quittée : la première se reprend, la seconde se rejoint.
+    if (this.matchId) this.room.reportPaused?.(this.matchId, paused);
     this.broadcast();
   }
 

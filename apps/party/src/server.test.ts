@@ -30,6 +30,11 @@ class FakeRoom {
   loadState(): Promise<RoomSnapshot | null> {
     return Promise.resolve(this.saved);
   }
+  /** Pauses remontées à l'historique (le DO global, en vrai). */
+  pauses: boolean[] = [];
+  reportPaused(_matchId: string, paused: boolean) {
+    this.pauses.push(paused);
+  }
   saveState(snapshot: RoomSnapshot) {
     // Round-trip JSON : ce qui ne survit pas à la sérialisation se voit ici.
     this.saved = JSON.parse(JSON.stringify(snapshot)) as RoomSnapshot;
@@ -184,6 +189,16 @@ describe('serveur en ligne', () => {
     await flush();
     return { room, server, host, other };
   }
+
+  it('remonte la pause à l’historique (partie « à reprendre » vs « à rejoindre »)', async () => {
+    const { room, server, host } = await startedRoom();
+    expect(room.pauses).toEqual([]);
+    server.onMessage(msg({ t: 'PAUSE' }), host);
+    await flush();
+    server.onMessage(msg({ t: 'RESUME' }), host);
+    await flush();
+    expect(room.pauses).toEqual([true, false]);
+  });
 
   it('le créateur reste administrateur après un aller-retour dans le salon', async () => {
     // Régression : un simple retour au menu (ou un écran verrouillé) transférait

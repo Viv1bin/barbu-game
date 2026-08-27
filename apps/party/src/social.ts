@@ -37,6 +37,8 @@ export interface MatchRow {
   ownerId: string | null;
   manches: number;
   totalManches: number;
+  /** Pause décidée par l'hôte (≠ partie simplement quittée). */
+  paused: boolean;
   players: { accountId: string; score: number | null }[];
 }
 
@@ -89,6 +91,8 @@ export interface SocialDB {
   closeMatch(id: string, endedAt: string, scores: GameResultEntry[]): void;
   /** Met à jour le nombre de manches jouées d'une partie en cours. */
   setMatchProgress(id: string, manches: number): void;
+  /** Note qu'une partie en cours est en pause (ou repart). */
+  setMatchPaused(id: string, paused: boolean): void;
   /** En-tête d'une partie (sans les participants), ou undefined si inconnue. */
   getMatch(id: string): MatchRow | undefined;
   /** Supprime une partie de l'historique de tous ses participants. */
@@ -309,15 +313,26 @@ export class SocialLogic {
     if (this.db.getMatch(matchId)) this.db.setMatchProgress(matchId, Math.max(0, Math.floor(manches)));
   }
 
+  /** Pause / reprise décidée par l'hôte, remontée par la salle. */
+  pauseGame(matchId: string, paused: boolean): void {
+    if (this.db.getMatch(matchId)) this.db.setMatchPaused(matchId, paused);
+  }
+
   /**
    * Supprime une partie de l'historique. Réservé au créateur de la salle :
    * l'entrée est partagée par tous les participants, un joueur ne peut pas
    * l'effacer chez les autres. Irréversible — la confirmation est côté client.
+   *
+   * Exception : les parties ouvertes avant l'enregistrement du créateur n'ont
+   * pas de propriétaire connu. Plutôt que de les rendre indestructibles, on
+   * laisse n'importe quel participant faire le ménage.
    */
   deleteMatch(viewerId: string, matchId: unknown): { ok: true } {
     const match = this.db.getMatch(String(matchId ?? ''));
     if (!match) throw new SocialError('Partie introuvable.', 404);
-    if (match.ownerId !== viewerId) throw new SocialError('Seul le créateur de la partie peut la supprimer.', 403);
+    const allowed =
+      match.ownerId === null ? this.db.listMatches(viewerId, MATCH_HISTORY_LIMIT).some((m) => m.id === match.id) : match.ownerId === viewerId;
+    if (!allowed) throw new SocialError('Seul le créateur de la partie peut la supprimer.', 403);
     this.db.deleteMatch(match.id);
     return { ok: true };
   }
@@ -332,6 +347,7 @@ export class SocialLogic {
       ownerId: m.ownerId,
       manches: m.manches,
       totalManches: m.totalManches,
+      paused: m.paused,
       players: m.players
         .map((p) => {
           const profile = this.db.findById(p.accountId);

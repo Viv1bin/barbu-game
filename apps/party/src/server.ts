@@ -65,6 +65,11 @@ export class BarbuServer extends Server<Env> {
         const stub = env.Auth.get(env.Auth.idFromName('global'));
         void stub.recordOnlineProgress(matchId, manches);
       },
+      // Pause de l'hôte : distingue « à reprendre » de « à rejoindre » au menu.
+      reportPaused: (matchId, paused) => {
+        const stub = env.Auth.get(env.Auth.idFromName('global'));
+        void stub.recordOnlinePause(matchId, paused);
+      },
       // Fin de partie en ligne → agrège les stats des comptes dans le DO global.
       reportResult: (matchId, entries) => {
         const stub = env.Auth.get(env.Auth.idFromName('global'));
@@ -106,6 +111,7 @@ function toMatchHead(h: Record<string, SqlStorageValue>): Omit<MatchRow, 'player
     ownerId: h.owner_id == null ? null : String(h.owner_id),
     manches: Number(h.manches ?? 0),
     totalManches: Number(h.total_manches ?? 0),
+    paused: Number(h.paused ?? 0) === 1,
   };
 }
 
@@ -176,12 +182,18 @@ export class AuthServer extends DurableObject<Env> {
     this.sql.exec(
       `CREATE TABLE IF NOT EXISTS matches (
         id TEXT PRIMARY KEY, code TEXT NOT NULL, started_at TEXT NOT NULL, ended_at TEXT,
-        owner_id TEXT, manches INTEGER NOT NULL DEFAULT 0, total_manches INTEGER NOT NULL DEFAULT 0
+        owner_id TEXT, manches INTEGER NOT NULL DEFAULT 0, total_manches INTEGER NOT NULL DEFAULT 0,
+        paused INTEGER NOT NULL DEFAULT 0
       )`,
     );
     // Tables créées avant la progression et le créateur : SQLite n'a pas d'ADD
     // COLUMN IF NOT EXISTS, on tente et on ignore l'erreur « duplicate column ».
-    for (const col of ['owner_id TEXT', 'manches INTEGER NOT NULL DEFAULT 0', 'total_manches INTEGER NOT NULL DEFAULT 0']) {
+    for (const col of [
+      'owner_id TEXT',
+      'manches INTEGER NOT NULL DEFAULT 0',
+      'total_manches INTEGER NOT NULL DEFAULT 0',
+      'paused INTEGER NOT NULL DEFAULT 0',
+    ]) {
       try {
         this.sql.exec(`ALTER TABLE matches ADD COLUMN ${col}`);
       } catch {
@@ -318,8 +330,8 @@ export class AuthServer extends DurableObject<Env> {
         void sql.exec('DELETE FROM solo_saves WHERE account_id = ? AND game_id = ?', accountId, gameId),
       openMatch: (id, code, startedAt, accountIds, ownerId, totalManches) => {
         sql.exec(
-          `INSERT OR REPLACE INTO matches (id, code, started_at, ended_at, owner_id, manches, total_manches)
-           VALUES (?, ?, ?, NULL, ?, 0, ?)`,
+          `INSERT OR REPLACE INTO matches (id, code, started_at, ended_at, owner_id, manches, total_manches, paused)
+           VALUES (?, ?, ?, NULL, ?, 0, ?, 0)`,
           id,
           code,
           startedAt,
@@ -337,6 +349,7 @@ export class AuthServer extends DurableObject<Env> {
         }
       },
       setMatchProgress: (id, manches) => void sql.exec('UPDATE matches SET manches = ? WHERE id = ?', manches, id),
+      setMatchPaused: (id, paused) => void sql.exec('UPDATE matches SET paused = ? WHERE id = ?', paused ? 1 : 0, id),
       getMatch: (id): MatchRow | undefined => {
         const h = [...sql.exec('SELECT * FROM matches WHERE id = ?', id)][0];
         return h ? { ...toMatchHead(h), players: [] } : undefined;
@@ -348,7 +361,7 @@ export class AuthServer extends DurableObject<Env> {
       listMatches: (accountId, limit): MatchRow[] => {
         const heads = [
           ...sql.exec(
-            `SELECT m.id, m.code, m.started_at, m.ended_at, m.owner_id, m.manches, m.total_manches FROM matches m
+            `SELECT m.id, m.code, m.started_at, m.ended_at, m.owner_id, m.manches, m.total_manches, m.paused FROM matches m
              JOIN match_players p ON p.match_id = m.id
              WHERE p.account_id = ? ORDER BY m.started_at DESC LIMIT ?`,
             accountId,
@@ -396,6 +409,11 @@ export class AuthServer extends DurableObject<Env> {
   /** Avancement d'une partie en cours, remonté à chaque fin de manche (RPC). */
   recordOnlineProgress(matchId: string, manches: number): void {
     this.social.progressGame(matchId, manches);
+  }
+
+  /** Pause / reprise décidée par l'hôte de la salle (RPC). */
+  recordOnlinePause(matchId: string, paused: boolean): void {
+    this.social.pauseGame(matchId, paused);
   }
 
   /** Enregistre une partie en ligne (appel de confiance depuis la salle via RPC). */
