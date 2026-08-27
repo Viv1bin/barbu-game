@@ -158,6 +158,7 @@ function OnlineRoom({
     handSizes: view.handSizes,
     history: game.history,
     pause: game.pause,
+    lastTrick: game.lastTrick,
     hint: null,
     actor: currentActor(view),
     // Une partie suspendue (pause de l'hôte, joueur absent) n'accepte plus

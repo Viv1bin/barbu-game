@@ -17,9 +17,13 @@ import {
   type Rank,
 } from '@barbu/engine';
 
+import type { LastTrick } from '../game/GameTable.js';
+
 export const HUMAN = 0;
 
-const BOT_DELAY = 650; // ms entre deux coups de bot (voir les cartes tomber)
+// Un bot ne « réfléchit » pas, mais jouer instantanément donne une table qui
+// se vide plus vite qu'on ne la lit : le délai est là pour le confort du joueur.
+const BOT_DELAY = 1100; // ms entre deux coups de bot (voir les cartes tomber)
 const SHOW_MS = 1100; // ms d'affichage d'un pli complet
 const COLLECT_MS = 550; // ms d'animation « le gagnant ramasse le pli »
 
@@ -97,6 +101,8 @@ export interface SoloGame {
   history: SoloManche[];
   /** Pli complet figé en cours d'affichage (pause), ou null. */
   pause: TrickPause | null;
+  /** Dernier pli terminé de la manche en cours (consultable après coup), ou null. */
+  lastTrick: LastTrick | null;
   /** Dernière donne complète (4 mains), pour le reveal de fin de partie. */
   lastDeal: Card[][] | null;
   /** true si l'humain ne peut pas agir (bot en cours ou pause). */
@@ -122,6 +128,7 @@ export function useSoloGame(level: Difficulty, aid = false, opts: SoloOptions = 
     resume ? withMatchOptions(resume.state) : createMatch(rngRef.current, opts.options)
   );
   const [pause, setPause] = useState<TrickPause | null>(null);
+  const [lastTrick, setLastTrick] = useState<LastTrick | null>(null);
   const [history, setHistory] = useState<SoloManche[]>(() => (resume ? resume.history : []));
   const dealRef = useRef<Card[][] | null>(null);
   initedRef.current = true;
@@ -176,6 +183,9 @@ export function useSoloGame(level: Difficulty, aid = false, opts: SoloOptions = 
     }
     setState(next);
     if (nextPause) setPause(nextPause);
+    // Le pli reste consultable jusqu'à la fin de la manche, pas au-delà.
+    if (next.mancheCount > state.mancheCount) setLastTrick(null);
+    else if (nextPause) setLastTrick({ trick: nextPause.trick, winner: nextPause.winner });
   };
 
   // Boucle bots : si pas occupé et que l'acteur n'est pas l'humain, joue après un délai.
@@ -203,6 +213,7 @@ export function useSoloGame(level: Difficulty, aid = false, opts: SoloOptions = 
     hint,
     history,
     pause,
+    lastTrick,
     lastDeal: dealRef.current,
     busy,
     chooseContract: (contract, rank) => step({ t: 'CHOOSE_CONTRACT', contract, rank }),
@@ -214,6 +225,7 @@ export function useSoloGame(level: Difficulty, aid = false, opts: SoloOptions = 
       opts.onClear?.();
       rngRef.current = mulberry((Math.random() * 2 ** 32) >>> 0);
       setPause(null);
+      setLastTrick(null);
       setHistory([]);
       setState(createMatch(rngRef.current, state.options));
     },

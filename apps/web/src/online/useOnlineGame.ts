@@ -14,7 +14,7 @@ import type {
   SeatInfo,
   ServerMsg,
 } from '@barbu/engine';
-import type { UiPause } from '../game/GameTable.js';
+import type { LastTrick, UiPause } from '../game/GameTable.js';
 
 /** Hôte du serveur temps réel (Cloudflare Workers) : env de build en prod, `wrangler dev` local par défaut. */
 export const PARTYKIT_HOST = import.meta.env.VITE_PARTYKIT_HOST ?? '127.0.0.1:8787';
@@ -38,6 +38,8 @@ export interface OnlineGame {
   view: RedactedMatchState | null;
   history: MancheLog[];
   pause: UiPause | null;
+  /** Dernier pli terminé de la manche en cours (consultable après coup), ou null. */
+  lastTrick: LastTrick | null;
   /** Suspension de la partie : pause de l'hôte, absents, demandes en attente. */
   halt: RoomHalt;
   // Actions lobby (hôte)
@@ -69,6 +71,8 @@ export interface OnlineIdentity {
 export function useOnlineGame(code: string, me: OnlineIdentity): OnlineGame {
   const sockRef = useRef<PartySocket | null>(null);
   const collectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Manche affichée à la dernière vue reçue : sert à périmer le dernier pli. */
+  const mancheRef = useRef(-1);
 
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,6 +84,7 @@ export function useOnlineGame(code: string, me: OnlineIdentity): OnlineGame {
   const [view, setView] = useState<RedactedMatchState | null>(null);
   const [history, setHistory] = useState<MancheLog[]>([]);
   const [pause, setPause] = useState<UiPause | null>(null);
+  const [lastTrick, setLastTrick] = useState<LastTrick | null>(null);
   const [halt, setHalt] = useState<RoomHalt>(NO_HALT);
 
   useEffect(() => {
@@ -125,6 +130,14 @@ export function useOnlineGame(code: string, me: OnlineIdentity): OnlineGame {
       setHalt(msg.halt ?? NO_HALT);
       setView(msg.view);
       setHistory(msg.history);
+      // Le dernier pli reste consultable jusqu'à la fin de la manche : au-delà,
+      // il appartient à un contrat qui n'est plus le contrat en cours. Le pli
+      // qui *clôt* une manche arrive dans le même message que le compteur qui
+      // avance — il tombe donc avec elle.
+      const newManche = msg.view.mancheCount !== mancheRef.current;
+      mancheRef.current = msg.view.mancheCount;
+      if (newManche) setLastTrick(null);
+      else if (msg.pause) setLastTrick({ trick: msg.pause.trick, winner: msg.pause.winner });
       if (collectTimer.current) clearTimeout(collectTimer.current);
       if (msg.pause) {
         setPause({ ...msg.pause, collecting: false });
@@ -168,6 +181,7 @@ export function useOnlineGame(code: string, me: OnlineIdentity): OnlineGame {
     view,
     history,
     pause,
+    lastTrick,
     halt,
     configureSeat: (seat, kind, level) => send({ t: 'SEAT', seat, kind, level }),
     startMatch: (options) => send({ t: 'START', options }),

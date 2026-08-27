@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   ALL_CONTRACTS,
   canPass,
@@ -6,6 +6,7 @@ import {
   legalContracts,
   legalPlays,
   legalReussitePlays,
+  totalManches,
   type Action,
   type Card,
   type ContractId,
@@ -44,6 +45,16 @@ export interface UiPause {
   winner: PlayerId;
   /** true = phase « le gagnant ramasse » (cartes filent vers son siège). */
   collecting: boolean;
+}
+
+/**
+ * Dernier pli ramassé, gardé après l'animation pour pouvoir le revoir. Remis à
+ * zéro à chaque manche : un pli de la manche précédente ne dit plus rien du
+ * contrat en cours.
+ */
+export interface LastTrick {
+  trick: PlayedCard[];
+  winner: PlayerId;
 }
 
 /** Libellé d'un siège (humain ou bot). */
@@ -101,6 +112,8 @@ export interface TableView {
   history: MancheLog[];
   /** Pli en cours d'animation, ou null. */
   pause: UiPause | null;
+  /** Dernier pli terminé de la manche, consultable à la demande. */
+  lastTrick: LastTrick | null;
   /** Coup conseillé (aide solo) ; null en ligne. */
   hint: Action | null;
   /** Acteur courant (currentActor de l'état). */
@@ -154,9 +167,12 @@ export function GameTable({
 }) {
   const { state } = view;
   const [showScores, setShowScores] = useState(false);
+  const [showTrick, setShowTrick] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const choosing = state.phase === 'CHOOSE_CONTRACT' && state.dealer === view.you && !view.pause;
   const done = state.phase === 'DONE';
+  const manches = totalManches(state.options);
+  const recap = useMancheRecap(view);
 
   return (
     <div className="app solo">
@@ -166,9 +182,16 @@ export function GameTable({
           <h1>Barbu <span className="mode">{title}</span></h1>
         </div>
         <div className="meta">
-          <span>Manche {Math.min(state.mancheCount + 1, 28)}/28</span>
+          {/* Le total dépend des règles choisies : une partie éclair n'a que 8
+              manches, afficher 28 en dur donnait un avancement faux. */}
+          <span>Manche {Math.min(state.mancheCount + 1, manches)}/{manches}</span>
           <span>Contrat : {state.currentContract ? CONTRACT_LABEL[state.currentContract] : '—'}</span>
           <button className="ghost" onClick={() => setShowScores(true)}><Icon name="chart" size={16} />Scores</button>
+          {/* Revoir le pli précédent : à quatre joueurs, une carte tombe vite et
+              on n'a pas toujours le temps de lire ce qui vient de passer. */}
+          <button className="ghost" disabled={!view.lastTrick} onClick={() => setShowTrick(true)}>
+            <Icon name="cards" size={16} />Dernier pli
+          </button>
           {view.room && !done && <PauseButton room={view.room} />}
         </div>
       </header>
@@ -178,6 +201,10 @@ export function GameTable({
       {choosing && <ContractBar view={view} />}
       <HumanDock view={view} />
       {showScores && <ScoresModal view={view} onClose={() => setShowScores(false)} />}
+      {showTrick && view.lastTrick && (
+        <LastTrickModal view={view} trick={view.lastTrick} onClose={() => setShowTrick(false)} />
+      )}
+      {recap.log && <MancheRecap view={view} index={recap.index} onClose={recap.close} />}
       {leaving && leaveOptions && (
         <LeaveDialog
           onSave={() => { leaveOptions.onSave(); onBack(); }}
@@ -381,6 +408,190 @@ function ScoresModal({ view, onClose }: { view: TableView; onClose: () => void }
         )}
 
         <ContractsOverview view={view} />
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Fin de manche : récapitulatif animé (points de la manche, puis classement qui
+// se réordonne). Non bloquant — la partie continue derrière, le panneau se
+// referme tout seul.
+// ---------------------------------------------------------------------------
+/** Durée d'affichage du récapitulatif de manche avant fermeture automatique. */
+const RECAP_MS = 6500;
+/** Délai avant l'application des nouveaux totaux (le temps de lire les points). */
+const RECAP_SETTLE_MS = 900;
+/** Hauteur d'une ligne du classement : sert au calcul des positions animées. */
+const RECAP_ROW = 44;
+
+/** Rang (0 = premier) de chaque joueur pour un tableau de totaux. Moins = mieux. */
+function rankOf(totals: number[]): number[] {
+  const order = [0, 1, 2, 3].sort((a, b) => totals[a]! - totals[b]! || a - b);
+  const ranks = [0, 0, 0, 0];
+  order.forEach((p, i) => (ranks[p] = i));
+  return ranks;
+}
+
+/**
+ * Ouvre le récapitulatif dès qu'une manche s'ajoute à l'historique. La toute
+ * dernière n'en déclenche pas : la fin de partie a déjà son propre écran.
+ */
+function useMancheRecap(view: TableView): { log: MancheLog | null; index: number; close: () => void } {
+  const [index, setIndex] = useState(-1);
+  // Initialisé à l'historique du premier rendu : rejoindre une partie déjà
+  // avancée ne doit pas rejouer le récapitulatif d'une manche qu'on a ratée.
+  const seen = useRef(view.history.length);
+  const done = view.state.phase === 'DONE';
+
+  useEffect(() => {
+    const n = view.history.length;
+    const grew = n > seen.current;
+    seen.current = n;
+    if (grew && !done) setIndex(n - 1);
+  }, [view.history.length, done]);
+
+  useEffect(() => {
+    if (index < 0) return;
+    const id = setTimeout(() => setIndex(-1), RECAP_MS);
+    return () => clearTimeout(id);
+  }, [index]);
+
+  return { log: index >= 0 ? view.history[index] ?? null : null, index, close: () => setIndex(-1) };
+}
+
+/** Total qui défile de `from` à `to` quand `run` passe à true. */
+function useCountUp(from: number, to: number, run: boolean): number {
+  const [value, setValue] = useState(from);
+  useEffect(() => {
+    if (!run) return setValue(from);
+    let raf = 0;
+    const t0 = performance.now();
+    const tick = (t: number) => {
+      const k = Math.min(1, (t - t0) / 600);
+      setValue(Math.round(from + (to - from) * k));
+      if (k < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [from, to, run]);
+  return value;
+}
+
+function MancheRecap({ view, index, onClose }: { view: TableView; index: number; onClose: () => void }) {
+  const { history, seats } = view;
+  const log = history[index]!;
+  const [settled, setSettled] = useState(false);
+
+  useEffect(() => {
+    setSettled(false);
+    const id = setTimeout(() => setSettled(true), RECAP_SETTLE_MS);
+    return () => clearTimeout(id);
+  }, [index]);
+
+  const before = [0, 0, 0, 0];
+  for (const m of history.slice(0, index)) for (let p = 0; p < 4; p++) before[p]! += m.points[p]!;
+  const after = before.map((v, p) => v + log.points[p]!);
+  // Les places se recalculent une fois les points encaissés : c'est ce
+  // glissement d'une ligne à l'autre qui montre qui vient de doubler qui.
+  const ranks = rankOf(settled ? after : before);
+
+  return (
+    <div className="recap-back">
+      <div className="recap">
+        <div className="rc-head">
+          <span className="rc-step">Manche {index + 1} terminée</span>
+          <h3>
+            <Icon name={CONTRACT_ICON[log.contract]} size={18} /> {CONTRACT_LABEL[log.contract]}
+          </h3>
+          <span className="rc-dealer">
+            donneur : {seats[log.dealer]!.name}
+            {log.contres.length > 0 && ` · contré par ${log.contres.map((c) => seats[c]!.name).join(', ')}`}
+          </span>
+        </div>
+        <div className="rc-board" style={{ height: 4 * RECAP_ROW }}>
+          {seats.map((s, p) => (
+            <RecapRow
+              key={p}
+              seat={s}
+              rank={ranks[p]!}
+              delta={log.points[p]!}
+              before={before[p]!}
+              after={after[p]!}
+              settled={settled}
+              you={p === view.you}
+            />
+          ))}
+        </div>
+        <button className="ghost tiny rc-close" onClick={onClose}>Continuer</button>
+      </div>
+    </div>
+  );
+}
+
+function RecapRow({
+  seat,
+  rank,
+  delta,
+  before,
+  after,
+  settled,
+  you,
+}: {
+  seat: SeatLabel;
+  rank: number;
+  delta: number;
+  before: number;
+  after: number;
+  settled: boolean;
+  you: boolean;
+}) {
+  const total = useCountUp(before, after, settled);
+  const style = { transform: `translateY(${rank * RECAP_ROW}px)`, '--d': `${rank * 0.09}s` } as CSSProperties;
+  return (
+    <div className={`rc-row ${you ? 'me' : ''} ${rank === 0 && settled ? 'lead' : ''}`} style={style}>
+      <span className="rc-pos">{rank + 1}</span>
+      <Avatar name={seat.avatar} size="sm" />
+      <span className="rc-name">{seat.name}</span>
+      <span className={`rc-delta ${delta > 0 ? 'neg' : delta < 0 ? 'pos' : 'zero'}`}>
+        {delta > 0 ? '+' : ''}{delta}
+      </span>
+      <span className="rc-total">{total} pts</span>
+    </div>
+  );
+}
+
+/**
+ * Le pli précédent, rejoué au ralenti : les cartes reviennent une à une depuis
+ * le siège de leur joueur, dans l'ordre où elles ont été posées.
+ */
+function LastTrickModal({ view, trick, onClose }: { view: TableView; trick: LastTrick; onClose: () => void }) {
+  const { seats, you } = view;
+  const pos = (p: number) => (p - you + 4) % 4;
+  return (
+    <div className="modal-back" onClick={onClose}>
+      <div className="modal lasttrick-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="topbar">
+          <h2>Dernier pli</h2>
+          <button className="ghost" onClick={onClose}>Fermer</button>
+        </div>
+        <div className="lt-zone">
+          {trick.trick.map((pc, i) => {
+            const to = CARD_TO[pos(pc.player)]!;
+            const from = CARD_FROM[pos(pc.player)]!;
+            const style = {
+              '--tx': to[0], '--ty': to[1], '--fx': from[0], '--fy': from[1],
+              '--d': `${i * 0.14}s`,
+            } as CSSProperties;
+            return (
+              <div key={cardId(pc.card)} className={`lt-card ${trick.winner === pc.player ? 'win' : ''}`} style={style}>
+                <PlayingCard card={pc.card} size="lg" />
+                <span className="lt-who">{seats[pc.player]!.name}{i === 0 && ' · entame'}</span>
+              </div>
+            );
+          })}
+        </div>
+        <p className="lt-note"><Icon name="trophy" size={16} /> Pli pour {seats[trick.winner]!.name}.</p>
       </div>
     </div>
   );
