@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { OnlineMatch } from '@barbu/engine';
+import type { OnlineMatch, RoomInvite } from '@barbu/engine';
 import type { Auth } from './auth/useAuth.js';
 import { Icon, type IconName } from './ui/Icon.js';
 import { Avatar } from './ui/Avatar.js';
@@ -26,7 +26,7 @@ export function Menu({
   const me = auth.account;
   // Quitter une partie en ligne renvoie au menu sans la clore : elle reste
   // ouverte côté serveur, on la propose donc ici plutôt que dans l'onglet Amis.
-  const { live, remove } = useLiveMatches(auth.token);
+  const { live, invites, remove, dismissInvite } = useLiveMatches(auth.token);
   // Partie dont la suppression attend confirmation (irréversible).
   const [confirm, setConfirm] = useState<OnlineMatch | null>(null);
   const [busy, setBusy] = useState(false);
@@ -53,9 +53,20 @@ export function Menu({
         ))}
       </div>
 
-      {live.length > 0 && (
+      {(live.length > 0 || invites.length > 0) && (
         <div className="panel resumepanel">
           <div className="panelhead"><h3>Parties en cours</h3></div>
+          {invites.map((i) => (
+            <InviteRow
+              key={i.code}
+              invite={i}
+              onJoin={() => {
+                void dismissInvite(i.code);
+                onJoinRoom(i.code);
+              }}
+              onRefuse={() => void dismissInvite(i.code)}
+            />
+          ))}
           {live.map((m) => (
             <LiveMatchRow
               key={m.id}
@@ -97,6 +108,30 @@ export function Menu({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Invitation d'un ami à rejoindre sa salle. Elle vit au même endroit que les
+ * parties en cours : c'est la même question — « où est-ce que je peux jouer,
+ * là, tout de suite ? » — avec un état à part.
+ */
+function InviteRow({ invite, onJoin, onRefuse }: { invite: RoomInvite; onJoin: () => void; onRefuse: () => void }) {
+  return (
+    <div className="resumerow">
+      <div className="resumemeta">
+        <span className="mr-when">{DATE_FMT.format(new Date(invite.createdAt))}</span>
+        <span className="mr-code">{invite.code}</span>
+        <span className="resumestate is-invite">Invitation</span>
+      </div>
+      <span className="resumewho">
+        <span className="mr-p"><Avatar name={invite.from.avatar} size="sm" />{invite.from.pseudo} t'invite</span>
+      </span>
+      <div className="resumeactions">
+        <button className="ghost tiny" onClick={onRefuse}>Refuser</button>
+        <button className="tiny" onClick={onJoin}><Icon name="play" size={14} />Rejoindre</button>
+      </div>
     </div>
   );
 }

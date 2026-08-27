@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { OnlineMatch, PlayerStats, SocialSnapshot } from '@barbu/engine';
+import type { OnlineMatch, PlayerStats, RoomInvite, SocialSnapshot } from '@barbu/engine';
 import { apiFetch, ApiError } from '../auth/api.js';
 
 const EMPTY_SNAPSHOT: SocialSnapshot = { friends: [], requests: [] };
@@ -108,15 +108,24 @@ export function useSocial(token: string | null): Social {
  */
 export function useLiveMatches(token: string | null): {
   live: OnlineMatch[];
+  /** Invitations reçues d'amis : elles s'affichent avec les parties en cours. */
+  invites: RoomInvite[];
   /** Supprime définitivement une partie de l'historique (créateur uniquement). */
   remove: (matchId: string) => Promise<void>;
+  /** Retire une invitation : refusée, ou acceptée (on entre dans la salle). */
+  dismissInvite: (code: string) => Promise<void>;
 } {
   const [live, setLive] = useState<OnlineMatch[]>([]);
+  const [invites, setInvites] = useState<RoomInvite[]>([]);
   const load = useCallback(async () => {
     if (!token) return;
     try {
-      const r = await apiFetch<{ matches: OnlineMatch[] }>('/social/matches', { token });
-      setLive(r.matches.filter((m) => !m.endedAt));
+      const [m, i] = await Promise.all([
+        apiFetch<{ matches: OnlineMatch[] }>('/social/matches', { token }),
+        apiFetch<{ invites: RoomInvite[] }>('/social/invites', { token }),
+      ]);
+      setLive(m.matches.filter((x) => !x.endedAt));
+      setInvites(i.invites);
     } catch {
       /* pas de reprise proposée : l'écran « En ligne » reste accessible */
     }
@@ -134,7 +143,16 @@ export function useLiveMatches(token: string | null): {
     [token, load],
   );
 
-  return { live, remove };
+  const dismissInvite = useCallback(
+    async (code: string) => {
+      // Optimiste : l'invitation disparaît tout de suite, on rejoint dans la foulée.
+      setInvites((prev) => prev.filter((i) => i.code !== code));
+      await apiFetch('/social/invite/dismiss', { token, body: { code } });
+    },
+    [token],
+  );
+
+  return { live, invites, remove, dismissInvite };
 }
 
 /**

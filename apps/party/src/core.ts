@@ -286,6 +286,11 @@ export class GameRoom {
     // peut le libérer ou y mettre un bot — sinon un joueur parti avant le début
     // bloquerait la salle, faute de siège « ouvert » à remplir.
     if (!seat || (seat.kind === 'human' && seat.connId)) return this.sendError(sender, 'Siège occupé par un joueur.');
+    // Déloger un joueur déconnecté reste au créateur : l'hôte d'intérim ne doit
+    // pas pouvoir libérer la place de quelqu'un pendant sa coupure.
+    if (seat.kind === 'human' && !this.isOwner(sender)) {
+      return this.sendError(sender, 'Seul le créateur de la partie peut libérer la place d\'un joueur.');
+    }
     if (msg.kind === 'bot') {
       this.seats[msg.seat] = { kind: 'bot', name: `Bot ${msg.seat + 1}`, avatar: 'bot', level: msg.level ?? DEFAULT_LEVEL };
     } else {
@@ -355,7 +360,7 @@ export class GameRoom {
    * partie le temps que le joueur revienne.
    */
   private handleFillBot(sender: Conn, msg: Extract<ClientMsg, { t: 'FILL_BOT' }>) {
-    if (!this.isHost(sender)) return this.sendError(sender, 'Action réservée à l\'hôte.');
+    if (!this.isOwner(sender)) return this.sendError(sender, 'Seul le créateur de la partie peut confier un siège à un bot.');
     const seat = this.seats[msg.seat];
     if (!seat || seat.kind !== 'human') return;
     if (seat.connId) return this.sendError(sender, 'Ce joueur est connecté.');
@@ -489,6 +494,7 @@ export class GameRoom {
       seats: this.seatInfos(),
       youSeat: seat,
       hostId: this.hostId,
+      ownerId: this.ownerId,
       history: this.history,
       pause,
       halt: this.halt(),
@@ -501,6 +507,7 @@ export class GameRoom {
       code: this.room.id,
       seats: this.seatInfos(),
       hostId: this.hostId,
+      ownerId: this.ownerId,
       youSeat: seat,
       started: this.started,
       options: this.options,
@@ -525,6 +532,16 @@ export class GameRoom {
   private seatOfConn(connId: string): PlayerId | null {
     const i = this.seats.findIndex((s) => s.connId === connId);
     return i >= 0 ? (i as PlayerId) : null;
+  }
+
+  /**
+   * Créateur de la salle. Distinct de l'hôte, qui n'est qu'un intérim pendant
+   * son absence : les décisions qui touchent au siège d'un joueur (le confier à
+   * un bot) lui restent, un remplaçant de passage ne doit pas pouvoir les prendre.
+   */
+  private isOwner(conn: Conn): boolean {
+    const seat = this.seatOfConn(conn.id);
+    return seat !== null && this.seats[seat]!.profileId === this.ownerId;
   }
 
   private isHost(conn: Conn): boolean {

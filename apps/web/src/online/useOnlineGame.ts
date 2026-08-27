@@ -32,6 +32,9 @@ export interface OnlineGame {
   youSeat: PlayerId | null;
   hostId: string | null;
   isHost: boolean;
+  /** Créateur de la salle : l'hôte peut changer pendant son absence, pas lui. */
+  ownerId: string | null;
+  isOwner: boolean;
   view: RedactedMatchState | null;
   history: MancheLog[];
   pause: UiPause | null;
@@ -73,6 +76,7 @@ export function useOnlineGame(code: string, me: OnlineIdentity): OnlineGame {
   const [seats, setSeats] = useState<SeatInfo[]>([]);
   const [youSeat, setYouSeat] = useState<PlayerId | null>(null);
   const [hostId, setHostId] = useState<string | null>(null);
+  const [ownerId, setOwnerId] = useState<string | null>(null);
   const [view, setView] = useState<RedactedMatchState | null>(null);
   const [history, setHistory] = useState<MancheLog[]>([]);
   const [pause, setPause] = useState<UiPause | null>(null);
@@ -107,6 +111,7 @@ export function useOnlineGame(code: string, me: OnlineIdentity): OnlineGame {
         setSeats(msg.seats);
         setYouSeat(msg.youSeat);
         setHostId(msg.hostId);
+        setOwnerId(msg.ownerId ?? null);
         setHalt(msg.halt ?? NO_HALT);
         if (!msg.started) setView(null);
         return;
@@ -116,6 +121,7 @@ export function useOnlineGame(code: string, me: OnlineIdentity): OnlineGame {
       setSeats(msg.seats);
       setYouSeat(msg.youSeat);
       setHostId(msg.hostId);
+      setOwnerId(msg.ownerId ?? null);
       setHalt(msg.halt ?? NO_HALT);
       setView(msg.view);
       setHistory(msg.history);
@@ -157,6 +163,8 @@ export function useOnlineGame(code: string, me: OnlineIdentity): OnlineGame {
     youSeat,
     hostId,
     isHost: hostId !== null && hostId === me.profileId,
+    ownerId,
+    isOwner: ownerId !== null && ownerId === me.profileId,
     view,
     history,
     pause,

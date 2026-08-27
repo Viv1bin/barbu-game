@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { PublicProfile, SavedGame } from '@barbu/engine';
 import {
+  INVITE_TTL_MS,
   MAX_SAVED_GAME_BYTES,
   SocialError,
   SocialLogic,
+  type InviteRow,
   type MatchRow,
   type SocialDB,
   type StatsRow,
@@ -17,7 +19,17 @@ class MemoryDB implements SocialDB {
   statsRows = new Map<string, StatsRow>();
   saves = new Map<string, Map<string, SavedGame>>(); // accountId -> gameId -> save
   seen = new Map<string, number>();
+  invites = new Map<string, InviteRow>(); // clé "code|to"
 
+  addInvite(row: InviteRow) {
+    this.invites.set(`${row.code}|${row.toId}`, row);
+  }
+  listInvites(toId: string) {
+    return [...this.invites.values()].filter((i) => i.toId === toId).sort((a, b) => b.createdAt - a.createdAt);
+  }
+  removeInvite(code: string, toId: string) {
+    this.invites.delete(`${code}|${toId}`);
+  }
   add(id: string, pseudo: string, avatar = '🙂') {
     this.accounts.set(id, { id, pseudo, avatar });
   }
@@ -298,6 +310,34 @@ describe('historique des parties en ligne', () => {
     // Partie inconnue : sans effet, et surtout pas de ligne fantôme créée.
     social.progressGame('inconnue', 3);
     expect(social.listMatches('a')).toHaveLength(1);
+  });
+
+  it('invite un ami à rejoindre une salle, et la retire une fois traitée', () => {
+    const { db, social } = setup();
+    // Un inconnu ne peut pas être invité : l'invitation est une notification,
+    // pas un canal de sollicitation ouvert à tous.
+    expect(() => social.invite('a', 'b', 'ABCD12')).toThrow(/amis/i);
+    social.sendRequest('a', 'Bob');
+    social.respondRequest('b', 'a', true);
+    expect(social.invite('a', 'b', 'abcd12')).toEqual({ ok: true });
+    expect(social.listInvites('b')).toEqual([
+      { code: 'ABCD12', from: { id: 'a', pseudo: 'Alice', avatar: '🙂' }, createdAt: new Date(db.clock).toISOString() },
+    ]);
+    // Réinviter rafraîchit la date au lieu d'empiler des doublons.
+    social.invite('a', 'b', 'ABCD12');
+    expect(social.listInvites('b')).toHaveLength(1);
+    expect(() => social.invite('a', 'b', 'x')).toThrow(/code/i);
+    social.dismissInvite('b', 'abcd12');
+    expect(social.listInvites('b')).toEqual([]);
+  });
+
+  it('périme les invitations oubliées', () => {
+    const { db, social } = setup();
+    social.sendRequest('a', 'Bob');
+    social.respondRequest('b', 'a', true);
+    social.invite('a', 'b', 'ABCD12');
+    db.clock += INVITE_TTL_MS + 1;
+    expect(social.listInvites('b')).toEqual([]);
   });
 
   it('distingue une partie en pause d’une partie simplement quittée', () => {

@@ -243,6 +243,22 @@ describe('serveur en ligne', () => {
     expect(server.match?.phase).not.toBe('DONE');
   });
 
+  it('seul le créateur confie le siège d’un absent à un bot', async () => {
+    // L'hôte s'absente : le second joueur devient hôte par intérim. Il ne doit
+    // pas pouvoir pour autant remplacer le partant par un bot — sinon quitter
+    // trente secondes suffisait à perdre sa place.
+    const { server, host, other } = await startedRoom();
+    server.onClose(host);
+    for (let i = 0; i < 20; i++) await flush();
+    expect(server.hostId).toBe('p-other');
+
+    other.sent = [];
+    server.onMessage(msg({ t: 'FILL_BOT', seat: 0 }), other);
+    await flush();
+    expect(other.sent.some((m) => m.t === 'ERROR')).toBe(true);
+    expect(server.seats[0]!.kind).toBe('human');
+  });
+
   it('le joueur qui revient retrouve son siège et la partie repart', async () => {
     const { room, server, host } = await startedRoom();
     server.onClose(host);
