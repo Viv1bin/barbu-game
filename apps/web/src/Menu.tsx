@@ -110,8 +110,13 @@ const DATE_FMT = new Intl.DateTimeFormat('fr-FR', {
 
 /**
  * Une partie encore ouverte : quand elle a commencé, où elle en est, contre qui.
+ * Deux cas distincts — mise en pause par l'hôte (elle attend qu'on la reprenne)
+ * ou simplement quittée (elle tourne sans nous, on la rejoint).
+ *
  * Le bouton de suppression n'apparaît qu'au créateur de la salle — l'entrée est
  * partagée par tous les participants, le serveur refuse de toute façon les autres.
+ * Les parties d'avant l'enregistrement du créateur (`ownerId` null) restent
+ * supprimables par leurs participants, sinon elles seraient indélogeables.
  */
 function LiveMatchRow({
   match,
@@ -133,6 +138,9 @@ function LiveMatchRow({
       <div className="resumemeta">
         <span className="mr-when">{DATE_FMT.format(new Date(match.startedAt))}</span>
         <span className="mr-code">{match.code}</span>
+        <span className={`resumestate ${match.paused ? 'is-paused' : ''}`}>
+          {match.paused ? 'En pause' : 'En cours'}
+        </span>
         {pct !== null && (
           <span className="resumeprog">Manche {Math.min(match.manches + 1, match.totalManches)}/{match.totalManches} · {pct}%</span>
         )}
@@ -143,10 +151,13 @@ function LiveMatchRow({
         ))}
       </span>
       <div className="resumeactions">
-        {match.ownerId === meId && (
+        {(match.ownerId === meId || match.ownerId === null) && (
           <button className="ghost tiny" onClick={onDelete}>Supprimer</button>
         )}
-        <button className="tiny" onClick={onJoin}><Icon name="play" size={14} />Reprendre</button>
+        <button className="tiny" onClick={onJoin}>
+          <Icon name="play" size={14} />
+          {match.paused ? 'Reprendre' : 'Rejoindre'}
+        </button>
       </div>
     </div>
   );

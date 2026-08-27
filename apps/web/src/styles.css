@@ -233,6 +233,13 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
   font-size: .74rem; font-weight: 650; color: var(--accent);
   background: var(--accent-soft); border-radius: 999px; padding: 2px 8px;
 }
+/* Pastille d'état : discrète tant que la partie tourne, marquée si elle attend
+   d'être reprise — c'est la seule différence utile entre les deux boutons. */
+.resumestate {
+  font-size: .72rem; font-weight: 650; color: var(--muted);
+  border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px;
+}
+.resumestate.is-paused { color: var(--danger); border-color: #eccfc9; background: var(--danger-soft); }
 .resumewho { display: flex; flex-wrap: wrap; gap: 6px; }
 .resumeactions { display: flex; gap: 8px; justify-content: flex-end; }
 

@@ -93,6 +93,11 @@ export interface OnlineMatch {
   manches: number;
   /** Manches prévues par les règles choisies (28 en partie complète). */
   totalManches: number;
+  /**
+   * Partie mise en pause par l'hôte : elle attend qu'on la reprenne. Une partie
+   * simplement quittée reste `false` — elle continue sans nous, on la rejoint.
+   */
+  paused: boolean;
   players: MatchPlayer[];
 }
 

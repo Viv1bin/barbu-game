@@ -92,8 +92,13 @@ class MemoryDB implements SocialDB {
       ownerId,
       manches: 0,
       totalManches,
+      paused: false,
       players: accountIds.map((a) => ({ accountId: a, score: null })),
     });
+  }
+  setMatchPaused(id: string, paused: boolean) {
+    const m = this.matches.get(id);
+    if (m) m.paused = paused;
   }
   setMatchProgress(id: string, manches: number) {
     const m = this.matches.get(id);
@@ -293,6 +298,26 @@ describe('historique des parties en ligne', () => {
     // Partie inconnue : sans effet, et surtout pas de ligne fantôme créée.
     social.progressGame('inconnue', 3);
     expect(social.listMatches('a')).toHaveLength(1);
+  });
+
+  it('distingue une partie en pause d’une partie simplement quittée', () => {
+    const { social } = setup();
+    social.startGame('m1', 'ABCD12', ['a', 'b'], 'a', 28);
+    expect(social.listMatches('a')[0]!.paused).toBe(false);
+    social.pauseGame('m1', true);
+    expect(social.listMatches('b')[0]!.paused).toBe(true);
+    social.pauseGame('m1', false);
+    expect(social.listMatches('b')[0]!.paused).toBe(false);
+  });
+
+  it('laisse les participants supprimer une partie sans créateur connu', () => {
+    const { social } = setup();
+    // Partie ouverte avant l'enregistrement du créateur : personne n'en est
+    // propriétaire, sinon elle resterait pour toujours dans l'historique.
+    social.startGame('m1', 'ABCD12', ['a', 'b'], null, 28);
+    expect(() => social.deleteMatch('c', 'm1')).toThrow(/créateur/i);
+    expect(social.deleteMatch('b', 'm1')).toEqual({ ok: true });
+    expect(social.listMatches('a')).toEqual([]);
   });
 
   it('seul le créateur supprime une partie, et pour tout le monde', () => {
