@@ -8,6 +8,7 @@ import {
   SocialLogic,
   SocialError,
   MAX_SAVED_GAME_BYTES,
+  type InviteRow,
   type MatchRow,
   type SocialDB,
   type StatsRow,
@@ -177,6 +178,14 @@ export class AuthServer extends DurableObject<Env> {
       `CREATE TABLE IF NOT EXISTS solo_saves (account_id TEXT NOT NULL, game_id TEXT NOT NULL, state TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (account_id, game_id))`,
     );
     this.sql.exec(`CREATE TABLE IF NOT EXISTS presence (account_id TEXT PRIMARY KEY, last_seen INTEGER NOT NULL)`);
+    // Une invitation par salle et par destinataire : réinviter rafraîchit la
+    // date au lieu d'empiler des doublons dans la liste de l'invité.
+    this.sql.exec(
+      `CREATE TABLE IF NOT EXISTS room_invites (
+        code TEXT NOT NULL, to_id TEXT NOT NULL, from_id TEXT NOT NULL, created_at INTEGER NOT NULL,
+        PRIMARY KEY (code, to_id)
+      )`,
+    );
     // Historique des parties en ligne : l'en-tête d'un côté, les participants de
     // l'autre, pour pouvoir lister « les parties de ce compte » par un index.
     this.sql.exec(
@@ -289,6 +298,22 @@ export class AuthServer extends DurableObject<Env> {
       removeRequest: (from, to) => void sql.exec('DELETE FROM friend_requests WHERE from_id = ? AND to_id = ?', from, to),
       incomingRequests: (id) => ids(sql.exec('SELECT from_id FROM friend_requests WHERE to_id = ?', id), 'from_id'),
       outgoingRequests: (id) => ids(sql.exec('SELECT to_id FROM friend_requests WHERE from_id = ?', id), 'to_id'),
+      addInvite: (row) =>
+        void sql.exec(
+          'INSERT OR REPLACE INTO room_invites (code, to_id, from_id, created_at) VALUES (?, ?, ?, ?)',
+          row.code,
+          row.toId,
+          row.fromId,
+          row.createdAt,
+        ),
+      listInvites: (toId): InviteRow[] =>
+        [...sql.exec('SELECT * FROM room_invites WHERE to_id = ? ORDER BY created_at DESC', toId)].map((r) => ({
+          code: String(r.code),
+          toId: String(r.to_id),
+          fromId: String(r.from_id),
+          createdAt: Number(r.created_at),
+        })),
+      removeInvite: (code, toId) => void sql.exec('DELETE FROM room_invites WHERE code = ? AND to_id = ?', code, toId),
       stats: (id) => {
         const r = [...sql.exec('SELECT * FROM stats WHERE account_id = ?', id)][0];
         return r
@@ -502,6 +527,12 @@ export class AuthServer extends DurableObject<Env> {
         return json(this.social.cancelRequest(id, body.toId));
       case 'POST /social/remove':
         return json(this.social.removeFriend(id, body.id));
+      case 'POST /social/invite':
+        return json(this.social.invite(id, body.id, body.code));
+      case 'GET /social/invites':
+        return json({ invites: this.social.listInvites(id) });
+      case 'POST /social/invite/dismiss':
+        return json(this.social.dismissInvite(id, body.code));
       case 'POST /social/ping':
         return json({ ok: true });
       case 'GET /social/matches':

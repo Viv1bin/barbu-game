@@ -70,6 +70,12 @@ export interface TableActions {
  */
 export interface RoomControl {
   isHost: boolean;
+  /**
+   * Créateur de la salle. L'hôte n'est qu'un intérim pendant son absence :
+   * remplacer un joueur par un bot lui est réservé, sinon un remplaçant de
+   * passage pouvait éjecter le titulaire d'un siège.
+   */
+  isOwner: boolean;
   /** Pause décidée par l'hôte. */
   paused: boolean;
   /** Sièges humains déconnectés : la partie est suspendue tant qu'ils manquent. */
@@ -210,6 +216,9 @@ function RoomBanner({ view, room }: { view: TableView; room: RoomControl }) {
   const { seats } = view;
   const name = (p: PlayerId) => seats[p]?.name ?? `Siège ${p + 1}`;
   const asks = room.asks.filter((p) => p !== view.you);
+  // Siège dont le remplacement par un bot attend confirmation (le joueur perd
+  // sa place pour de bon dans cette partie).
+  const [botSeat, setBotSeat] = useState<PlayerId | null>(null);
 
   if (room.absent.length > 0) {
     return (
@@ -217,19 +226,41 @@ function RoomBanner({ view, room }: { view: TableView; room: RoomControl }) {
         <span>
           <Icon name="warning" size={16} />
           Partie suspendue — {room.absent.map(name).join(', ')} {room.absent.length > 1 ? 'sont partis' : 'est parti'}.
-          {room.isHost
+          {room.isOwner
             ? ' Attends son retour, ou confie sa place à un bot.'
-            : " L'hôte peut le remplacer par un bot."}
+            : ' Le créateur de la partie peut le remplacer par un bot.'}
         </span>
-        {room.isHost && (
+        {room.isOwner && (
           <span className="rb-actions">
             {room.absent.map((p) => (
-              <button key={p} className="tiny" onClick={() => room.fillBot(p)}>
+              <button key={p} className="tiny" onClick={() => setBotSeat(p)}>
                 <Icon name="bot" size={14} />
                 {room.absent.length > 1 ? `Bot à la place de ${name(p)}` : 'Remplacer par un bot'}
               </button>
             ))}
           </span>
+        )}
+        {botSeat !== null && (
+          <div className="modal-back" onClick={() => setBotSeat(null)}>
+            <div className="modal leave-modal" onClick={(e) => e.stopPropagation()}>
+              <h2>Remplacer {name(botSeat)} par un bot ?</h2>
+              <p className="muted">
+                Un bot prend la main de {name(botSeat)} et la partie repart aussitôt. S'il revient,
+                il retrouve son siège, mais les coups joués par le bot resteront joués.
+              </p>
+              <div className="leave-actions">
+                <button
+                  onClick={() => {
+                    room.fillBot(botSeat);
+                    setBotSeat(null);
+                  }}
+                >
+                  <Icon name="bot" size={16} />Confier à un bot
+                </button>
+                <button className="ghost" onClick={() => setBotSeat(null)}>Annuler</button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     );

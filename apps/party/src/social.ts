@@ -8,9 +8,17 @@ import type {
   OnlineMatch,
   PlayerStats,
   PublicProfile,
+  RoomInvite,
   SavedGame,
   SocialSnapshot,
 } from '@barbu/engine';
+
+/**
+ * Durée de vie d'une invitation à rejoindre une salle. Passé ce délai la partie
+ * est finie ou abandonnée : l'invitation disparaît de l'écran d'accueil plutôt
+ * que d'y traîner indéfiniment.
+ */
+export const INVITE_TTL_MS = 12 * 3_600_000;
 
 /** Au-delà de ce délai sans « ping », un compte est considéré hors ligne. */
 const ONLINE_WINDOW_MS = 70_000;
@@ -42,6 +50,15 @@ export interface MatchRow {
   players: { accountId: string; score: number | null }[];
 }
 
+/** Une invitation à rejoindre une salle, telle que persistée. */
+export interface InviteRow {
+  code: string;
+  fromId: string;
+  toId: string;
+  /** Millisecondes (epoch) : sert à périmer les invitations oubliées. */
+  createdAt: number;
+}
+
 /** Ligne de stats telle que persistée. */
 export interface StatsRow {
   accountId: string;
@@ -68,6 +85,12 @@ export interface SocialDB {
   incomingRequests(id: string): string[];
   /** Ids des destinataires des demandes envoyées par `id`. */
   outgoingRequests(id: string): string[];
+
+  /** Enregistre (ou rafraîchit) une invitation à rejoindre une salle. */
+  addInvite(row: InviteRow): void;
+  /** Invitations reçues par `toId`, plus récente d'abord. */
+  listInvites(toId: string): InviteRow[];
+  removeInvite(code: string, toId: string): void;
 
   stats(id: string): StatsRow | undefined;
   saveStats(row: StatsRow): void;
@@ -306,6 +329,42 @@ export class SocialLogic {
     if (valid.length < 2) return { recorded: false };
     this.db.openMatch(matchId, code, new Date(this.now()).toISOString(), valid, ownerId, totalManches);
     return { recorded: true };
+  }
+
+  /**
+   * Invite un ami à rejoindre une salle. Réservé aux amis : une invitation est
+   * une notification, elle ne doit pas devenir un canal de sollicitation ouvert.
+   * La salle n'en sait rien — l'invité entre par le code, comme tout le monde.
+   */
+  invite(fromId: string, toId: unknown, code: unknown): { ok: true } {
+    const target = this.db.findById(String(toId ?? ''));
+    if (!target) throw new SocialError('Joueur introuvable.', 404);
+    if (target.id === fromId) throw new SocialError('Tu es déjà dans la partie.', 400);
+    if (!this.db.areFriends(fromId, target.id)) throw new SocialError('Réservé à tes amis.', 403);
+    const room = String(code ?? '').trim().toUpperCase();
+    if (!/^[A-Z0-9]{4,12}$/.test(room)) throw new SocialError('Code de partie invalide.', 400);
+    // Réinviter ne fait que rafraîchir la date : pas de doublon dans la liste.
+    this.db.addInvite({ code: room, fromId, toId: target.id, createdAt: this.now() });
+    return { ok: true };
+  }
+
+  /** Invitations reçues encore valables, expéditeur résolu. */
+  listInvites(id: string): RoomInvite[] {
+    const cutoff = this.now() - INVITE_TTL_MS;
+    return this.db
+      .listInvites(id)
+      .filter((i) => i.createdAt >= cutoff)
+      .map((i) => {
+        const from = this.db.findById(i.fromId);
+        return from ? { code: i.code, from, createdAt: new Date(i.createdAt).toISOString() } : null;
+      })
+      .filter((i): i is RoomInvite => i !== null);
+  }
+
+  /** Retire une invitation : refusée, ou acceptée (on est entré dans la salle). */
+  dismissInvite(id: string, code: unknown): { ok: true } {
+    this.db.removeInvite(String(code ?? '').trim().toUpperCase(), id);
+    return { ok: true };
   }
 
   /** Avancement d'une partie en cours (manches terminées), remonté par la salle. */

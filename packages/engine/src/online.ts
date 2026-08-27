@@ -74,6 +74,17 @@ export interface MatchPlayer extends PublicProfile {
 }
 
 /**
+ * Invitation à rejoindre une salle, envoyée par un ami. Elle ne vaut que par son
+ * code : la salle ne réserve pas de siège, c'est un raccourci pour y entrer.
+ */
+export interface RoomInvite {
+  /** Code de la salle à rejoindre. */
+  code: string;
+  from: PublicProfile;
+  createdAt: string;
+}
+
+/**
  * Une partie en ligne vue depuis l'historique d'un compte. Une salle peut
  * enchaîner plusieurs parties : `id` identifie la partie, `code` la salle (c'est
  * lui qu'on rejoint pour reprendre une partie encore en cours).
@@ -186,6 +197,11 @@ export type ServerMsg =
       code: string;
       seats: SeatInfo[];
       hostId: string | null;
+      /**
+       * Créateur de la salle. L'hôte peut changer le temps d'une absence, pas
+       * lui : certaines décisions (confier un siège à un bot) lui restent.
+       */
+      ownerId: string | null;
       youSeat: PlayerId | null;
       started: boolean;
       /** Options avec lesquelles la partie a démarré (ou démarrera par défaut). */
@@ -197,8 +213,9 @@ export type ServerMsg =
       view: RedactedMatchState;
       seats: SeatInfo[];
       youSeat: PlayerId | null;
-      /** Répété ici : en cours de partie le client ne reçoit plus de LOBBY. */
+      /** Répétés ici : en cours de partie le client ne reçoit plus de LOBBY. */
       hostId: string | null;
+      ownerId: string | null;
       history: MancheLog[];
       pause: TrickPause | null;
       halt: RoomHalt;

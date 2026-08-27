@@ -133,7 +133,7 @@ function OnlineRoom({
   if (!game.started || !game.view) {
     return (
       <>
-        <OnlineLobby game={game} code={code} onBack={onLeave} onShowProfile={setProfileId} />
+        <OnlineLobby game={game} code={code} token={token} onBack={onLeave} onShowProfile={setProfileId} />
         {profileId && <PlayerProfileModal id={profileId} token={token} onClose={() => setProfileId(null)} />}
       </>
     );
@@ -175,6 +175,7 @@ function OnlineRoom({
     onNewGame: game.isHost && view.phase === 'DONE' ? game.newGame : undefined,
     room: {
       isHost: game.isHost,
+      isOwner: game.isOwner,
       paused: game.halt.paused,
       absent: game.halt.absent,
       asks: game.halt.asks,
