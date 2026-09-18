@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { GameRoom, TIMING, type RoomSnapshot } from './core.js';
+import { DEFAULT_MATCH_OPTIONS } from '@barbu/engine';
 import type { Account, ClientMsg, ServerMsg } from '@barbu/engine';
 
 // Faux harnais de transport : capture les messages envoyés à chaque connexion.
@@ -158,7 +159,7 @@ describe('serveur en ligne', () => {
     await flush();
     // L'hôte confie son propre siège à un bot avant de partir → la partie se
     // joue seule (une simple déconnexion, elle, suspendrait tout).
-    server.onMessage(msg({ t: 'ACTION', action: { t: 'CHOOSE_CONTRACT', contract: 'BARBU' } }), host);
+    server.onMessage(msg({ t: 'ACTION', action: { t: 'CHOOSE_CONTRACT', contracts: ['BARBU'] } }), host);
     server.seats[0]!.connId = undefined;
     server.onMessage(msg({ t: 'SEAT', seat: 0, kind: 'bot', level: 'facile' }), host);
     server.seats[0] = { kind: 'bot', name: 'Bot 1', avatar: 'bot', level: 'facile' };
@@ -185,7 +186,9 @@ describe('serveur en ligne', () => {
     for (const seat of [2, 3] as const) {
       server.onMessage(msg({ t: 'SEAT', seat, kind: 'bot', level: 'facile' }), host);
     }
-    server.onMessage(msg({ t: 'START' }), host);
+    // Donneur fixé au siège 0 : les tests pilotent l'hôte, il doit être celui
+    // qui annonce le contrat (le tirage au sort du donneur est testé ailleurs).
+    server.onMessage(msg({ t: 'START', options: { ...DEFAULT_MATCH_OPTIONS, randomDealer: false } }), host);
     await flush();
     return { room, server, host, other };
   }
@@ -298,10 +301,10 @@ describe('serveur en ligne', () => {
 
     // En pause, plus aucun coup n'est accepté.
     host.sent = [];
-    server.onMessage(msg({ t: 'ACTION', action: { t: 'CHOOSE_CONTRACT', contract: 'BARBU' } }), host);
+    server.onMessage(msg({ t: 'ACTION', action: { t: 'CHOOSE_CONTRACT', contracts: ['BARBU'] } }), host);
     await flush();
     expect(host.sent.some((m) => m.t === 'ERROR')).toBe(true);
-    expect(server.match?.currentContract).toBeNull();
+    expect(server.match?.currentContracts).toEqual([]);
 
     server.onMessage(msg({ t: 'RESUME' }), host);
     await flush();
@@ -345,7 +348,7 @@ describe('serveur en ligne', () => {
 
   it('la salle restaure son état : reprise directe, sans reconfiguration', async () => {
     const { room, server, host } = await startedRoom();
-    server.onMessage(msg({ t: 'ACTION', action: { t: 'CHOOSE_CONTRACT', contract: 'BARBU' } }), host);
+    server.onMessage(msg({ t: 'ACTION', action: { t: 'CHOOSE_CONTRACT', contracts: ['BARBU'] } }), host);
     await flush();
     const saved = room.saved;
     expect(saved).not.toBeNull();
@@ -361,7 +364,7 @@ describe('serveur en ligne', () => {
     await flush();
 
     expect(server2.started).toBe(true);
-    expect(server2.match?.currentContract).toBe('BARBU');
+    expect(server2.match?.currentContracts).toEqual(['BARBU']);
     expect(server2.seats[2]!.kind).toBe('bot');
     const view = conn.sent.findLast((m) => m.t === 'VIEW');
     expect(view?.t).toBe('VIEW'); // et pas un LOBBY de configuration

@@ -164,7 +164,8 @@ export interface TrickPause {
 /** Une manche terminée, pour le tableau des scores en ligne. */
 export interface MancheLog {
   dealer: PlayerId;
-  contract: ContractId;
+  /** Contrats annoncés pour cette manche (un seul, sauf partie éclair). */
+  contracts: ContractId[];
   contres: PlayerId[];
   /** Points marqués par chaque joueur sur cette manche (contres appliqués). */
   points: number[];

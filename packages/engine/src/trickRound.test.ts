@@ -23,14 +23,14 @@ describe('restriction cœur à l’entame', () => {
       [{ suit: 'H', rank: 5 }, { suit: 'S', rank: 9 }],
       [], [], [],
     ];
-    const s = initTrickRound('COEUR', hands, 0);
+    const s = initTrickRound(['COEUR'], hands, 0);
     const plays = legalPlays(s, 0);
     expect(plays.every((c) => c.suit !== 'H')).toBe(true);
   });
 
   it('autorise cœur si main 100% cœur', () => {
     const hands: Card[][] = [[{ suit: 'H', rank: 5 }, { suit: 'H', rank: 9 }], [], [], []];
-    const s = initTrickRound('COEUR', hands, 0);
+    const s = initTrickRound(['COEUR'], hands, 0);
     expect(legalPlays(s, 0).length).toBe(2);
   });
 });
@@ -42,7 +42,7 @@ describe('obligation de fournir la couleur', () => {
       [{ suit: 'S', rank: 9 }, { suit: 'C', rank: 2 }],
       [], [],
     ];
-    let s = initTrickRound('PLIS', hands, 0);
+    let s = initTrickRound(['PLIS'], hands, 0);
     s = playCard(s, 0, { suit: 'S', rank: 5 }); // entame pique
     const plays = legalPlays(s, 1);
     expect(plays).toEqual([{ suit: 'S', rank: 9 }]); // trèfle interdit
@@ -57,7 +57,7 @@ describe('Barbu — arrêt sur Roi de cœur', () => {
       [{ suit: 'H', rank: 13 }, { suit: 'C', rank: 4 }], // KH + trèfle, pas de pique
       [{ suit: 'S', rank: 2 }, { suit: 'C', rank: 5 }],
     ];
-    let s = initTrickRound('BARBU', hands, 0);
+    let s = initTrickRound(['BARBU'], hands, 0);
     s = playCard(s, 0, { suit: 'S', rank: 5 });
     s = playCard(s, 1, { suit: 'S', rank: 9 });
     s = playCard(s, 2, { suit: 'H', rank: 13 }); // défausse le KH
@@ -73,7 +73,7 @@ describe('Barbu — arrêt sur Roi de cœur', () => {
 describe('simulation complète (randomBot)', () => {
   it('un contrat non-Barbu joue 13 plis et vide les mains', () => {
     const r = rng(42);
-    let s = initTrickRound('COEUR', deal(shuffle(fullDeck(), r)), 0);
+    let s = initTrickRound(['COEUR'], deal(shuffle(fullDeck(), r)), 0);
     let guard = 0;
     while (!s.finished && guard++ < 100) {
       const p = currentPlayer(s);

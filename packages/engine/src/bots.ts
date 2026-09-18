@@ -20,7 +20,7 @@ import type {
   ReussiteState,
   TrickRoundState,
 } from './types.js';
-import { legalContracts } from './match.js';
+import { legalContractSets } from './match.js';
 import { mcChooseContract, mcContre, mcReussite, mcTrickPlay } from './perfectBot.js';
 
 export type Difficulty = 'facile' | 'moyen' | 'difficile' | 'impossible';
@@ -64,8 +64,16 @@ export function seenCards(s: TrickRoundState): Card[] {
   return [...s.completedTricks.flat().map((pc) => pc.card), ...s.currentTrick.map((pc) => pc.card)];
 }
 
-/** Reste-t-il des cartes pénalité chez les adversaires (ni vues, ni dans ma main) ? */
-export function penaltyLeftOutside(contract: ContractId, seen: Card[], mine: Card[]): boolean {
+/**
+ * Reste-t-il des cartes pénalité chez les adversaires (ni vues, ni dans ma
+ * main) ? En manche combinée, il suffit qu'un seul contrat soit encore
+ * dangereux pour qu'il faille continuer à se méfier.
+ */
+export function penaltyLeftOutside(contracts: ContractId[], seen: Card[], mine: Card[]): boolean {
+  return contracts.some((c) => contractPenaltyLeft(c, seen, mine));
+}
+
+function contractPenaltyLeft(contract: ContractId, seen: Card[], mine: Card[]): boolean {
   const known = (pred: (c: Card) => boolean) =>
     seen.filter(pred).length + mine.filter(pred).length;
   switch (contract) {
@@ -84,7 +92,11 @@ export function penaltyLeftOutside(contract: ContractId, seen: Card[], mine: Car
 // Jeu à plis heuristique. `count` = mémoire (niveau difficile).
 // ---------------------------------------------------------------------------
 /** Danger à défausser : carte la plus risquée à conserver / à lâcher quand on est coupé. */
-function discardDanger(contract: ContractId, c: Card): number {
+function discardDanger(contracts: ContractId[], c: Card): number {
+  return contracts.reduce((sum, ct) => sum + contractDanger(ct, c), 0);
+}
+
+function contractDanger(contract: ContractId, c: Card): number {
   switch (contract) {
     case 'BARBU':
       return isKingOfHearts(c) ? 1000 : c.rank;
@@ -102,19 +114,21 @@ function discardDanger(contract: ContractId, c: Card): number {
 export function smartTrick(s: TrickRoundState, player: PlayerId, count: boolean): Card {
   const plays = legalPlays(s, player);
   if (plays.length === 1) return plays[0]!;
-  const contract = s.contract;
+  const contracts = s.contracts;
   const trick = s.currentTrick;
   const led = trick[0]?.card.suit ?? null;
   const last2 = s.completedTricks.length >= 11; // plis 12 & 13
 
   // Difficile : plus aucune pénalité dehors -> gagner est inoffensif, on lâche le plus haut.
-  if (count && !penaltyLeftOutside(contract, seenCards(s), s.hands[player]!)) {
+  if (count && !penaltyLeftOutside(contracts, seenCards(s), s.hands[player]!)) {
     return maxBy(plays, (c) => c.rank);
   }
 
   // ENTAME
   if (led === null) {
-    if (contract === 'DEUXDER' && !last2) return maxBy(plays, (c) => c.rank); // lâcher les hautes tôt
+    // 2 der seul : se délester tôt des hautes. Combiné à un autre contrat, le
+    // risque de ramasser une pénalité prime — on entame bas comme d'habitude.
+    if (contracts.length === 1 && contracts[0] === 'DEUXDER' && !last2) return maxBy(plays, (c) => c.rank);
     return minBy(plays, (c) => c.rank); // entamer bas pour ne pas ramasser
   }
 
@@ -129,7 +143,7 @@ export function smartTrick(s: TrickRoundState, player: PlayerId, count: boolean)
   }
 
   // COUPÉ : défausser la carte la plus dangereuse.
-  return maxBy(plays, (c) => discardDanger(contract, c));
+  return maxBy(plays, (c) => discardDanger(contracts, c));
 }
 
 export function smartReussite(s: ReussiteState, player: PlayerId): Action {
@@ -190,30 +204,47 @@ export function expectedPoints(contract: ContractId, hand: Card[], rank?: Rank):
 
 /** Meilleure hauteur d'ouverture Réussite pour cette main (max de fluidité). */
 export function bestReussiteRank(hand: Card[]): Rank {
+  return topReussiteRanks(hand, 1)[0]!;
+}
+
+/**
+ * Les `k` hauteurs d'ouverture les plus prometteuses. Simuler les 13 hauteurs
+ * possibles coûte cher pour rien : au-delà des trois premières, la fluidité
+ * décroche et le Monte-Carlo n'y trouve plus rien.
+ */
+export function topReussiteRanks(hand: Card[], k: number): Rank[] {
   const ranks = [...new Set(hand.map((c) => c.rank))] as Rank[];
-  return maxBy(ranks, (r) => reussiteFluidity(hand, r));
+  return ranks.sort((a, b) => reussiteFluidity(hand, b) - reussiteFluidity(hand, a)).slice(0, k);
 }
 
 // ---------------------------------------------------------------------------
 // Décisions de niveau match (contrat, contre) et API publique.
 // ---------------------------------------------------------------------------
+/** Espérance de points d'une annonce complète (un contrat, ou une paire combinée). */
+export function expectedPointsFor(contracts: ContractId[], hand: Card[], rank?: Rank): number {
+  return contracts.reduce((sum, c) => sum + expectedPoints(c, hand, rank), 0);
+}
+
 /** Choix du contrat par le donneur : le plus sûr (espérance minimale). */
 export function botChooseContract(s: MatchState, level: Difficulty, rng: () => number): Action {
-  const options = legalContracts(s);
+  const sets = legalContractSets(s);
   const hand = s.pendingHands![s.dealer]!;
+  // La hauteur n'a de sens que pour une Réussite, et elle se donne toujours seule.
+  const rankFor = (set: ContractId[]) =>
+    set.length === 1 && set[0] === 'REUSSITE' ? bestReussiteRank(hand) : undefined;
+
   if (level === 'facile') {
-    const contract = pick(options, rng);
-    if (contract === 'REUSSITE') {
+    const contracts = pick(sets, rng);
+    if (contracts.length === 1 && contracts[0] === 'REUSSITE') {
       const ranks = [...new Set(hand.map((c) => c.rank))];
-      return { t: 'CHOOSE_CONTRACT', contract, rank: pick(ranks, rng) as Rank };
+      return { t: 'CHOOSE_CONTRACT', contracts, rank: pick(ranks, rng) as Rank };
     }
-    return { t: 'CHOOSE_CONTRACT', contract };
+    return { t: 'CHOOSE_CONTRACT', contracts };
   }
   if (level === 'impossible') return mcChooseContract(s, rng);
-  const rankFor = (c: ContractId) => (c === 'REUSSITE' ? bestReussiteRank(hand) : undefined);
-  const contract = minBy(options, (c) => expectedPoints(c, hand, rankFor(c)));
-  const rank = rankFor(contract);
-  return rank === undefined ? { t: 'CHOOSE_CONTRACT', contract } : { t: 'CHOOSE_CONTRACT', contract, rank };
+  const contracts = minBy(sets, (set) => expectedPointsFor(set, hand, rankFor(set)));
+  const rank = rankFor(contracts);
+  return rank === undefined ? { t: 'CHOOSE_CONTRACT', contracts } : { t: 'CHOOSE_CONTRACT', contracts, rank };
 }
 
 const CONTRE_BASE: Record<ContractId, number> = {
@@ -230,11 +261,13 @@ const CONTRE_BASE: Record<ContractId, number> = {
 export function botContre(s: MatchState, player: PlayerId, level: Difficulty, rng: () => number): Action {
   if (level === 'facile') return { t: 'CONTRE', player, contre: rng() < 0.2 };
   if (level === 'impossible') return mcContre(s, player, rng);
-  const contract = s.currentContract!;
-  if (contract === 'REUSSITE') return { t: 'CONTRE', player, contre: false }; // trop incertain
+  const contracts = s.currentContracts;
+  // Réussite : trop incertain pour une heuristique, on laisse passer.
+  if (contracts.includes('REUSSITE')) return { t: 'CONTRE', player, contre: false };
   const hand = s.pendingHands![player]!;
   const factor = level === 'difficile' ? 0.7 : 0.45;
-  const contre = expectedPoints(contract, hand) < CONTRE_BASE[contract] * factor;
+  const base = contracts.reduce((sum, c) => sum + CONTRE_BASE[c], 0);
+  const contre = expectedPointsFor(contracts, hand) < base * factor;
   return { t: 'CONTRE', player, contre };
 }
 

@@ -67,7 +67,8 @@ export interface SeatLabel {
 }
 
 export interface TableActions {
-  chooseContract: (contract: ContractId, rank?: Rank) => void;
+  /** Annonce du donneur : un contrat, ou deux en manche combinée. */
+  chooseContract: (contracts: ContractId[], rank?: Rank) => void;
   respondContre: (contre: boolean) => void;
   playCard: (card: Card) => void;
   reussitePlay: (card: Card) => void;
@@ -137,6 +138,20 @@ const SEAT_CLASS = ['seat-bottom', 'seat-left', 'seat-top', 'seat-right'];
 const CARD_TO: Record<number, [string, string]> = { 0: ['0', '44px'], 1: ['-60px', '0'], 2: ['0', '-44px'], 3: ['60px', '0'] };
 const CARD_FROM: Record<number, [string, string]> = { 0: ['0', '260px'], 1: ['-340px', '0'], 2: ['0', '-260px'], 3: ['340px', '0'] };
 
+/** Libellé d'une annonce : « Barbu », ou « Barbu + Dames » en manche combinée. */
+function announceLabel(contracts: ContractId[]): string {
+  return contracts.map((c) => CONTRACT_LABEL[c]).join(' + ');
+}
+
+/**
+ * Contrats d'une manche journalisée. Les parties commencées avant les manches
+ * combinées n'ont qu'un `contract` : on les relit sans les perdre.
+ */
+function logContracts(m: MancheLog): ContractId[] {
+  const legacy = m as unknown as { contract?: ContractId };
+  return m.contracts ?? (legacy.contract ? [legacy.contract] : []);
+}
+
 function isTrick(r: MatchState['round']): r is TrickRoundState {
   return !!r && 'currentTrick' in r;
 }
@@ -185,7 +200,7 @@ export function GameTable({
           {/* Le total dépend des règles choisies : une partie éclair n'a que 8
               manches, afficher 28 en dur donnait un avancement faux. */}
           <span>Manche {Math.min(state.mancheCount + 1, manches)}/{manches}</span>
-          <span>Contrat : {state.currentContract ? CONTRACT_LABEL[state.currentContract] : '—'}</span>
+          <span>Contrat : {state.currentContracts.length > 0 ? announceLabel(state.currentContracts) : '—'}</span>
           <button className="ghost" onClick={() => setShowScores(true)}><Icon name="chart" size={16} />Scores</button>
           {/* Revoir le pli précédent : à quatre joueurs, une carte tombe vite et
               on n'a pas toujours le temps de lire ce qui vient de passer. */}
@@ -360,6 +375,9 @@ function ScoresModal({ view, onClose }: { view: TableView; onClose: () => void }
           <p className="muted">Aucune manche terminée pour l'instant.</p>
         ) : (
           <div className="tablewrap">
+            {/* En-tête collant : sur une partie complète le tableau fait 28
+                lignes, et sans les noms sous les yeux on ne sait plus quelle
+                colonne on lit. */}
             <table className="stable big">
               <thead>
                 <tr>
@@ -375,17 +393,28 @@ function ScoresModal({ view, onClose }: { view: TableView; onClose: () => void }
                 {history.map((m, i) => (
                   <tr key={i}>
                     <td className="dim">{i + 1}</td>
-                    <td><Avatar name={seats[m.dealer]!.avatar} size="sm" /></td>
-                    <td>
-                      <Icon name={CONTRACT_ICON[m.contract]} size={15} /> {CONTRACT_LABEL[m.contract]}
-                      {m.contres.length > 0 && (
-                        <span className="ctrtag" title={`Contré par ${m.contres.map((c) => seats[c]!.name).join(', ')}`}>
-                          ×{m.contres.length}
-                        </span>
-                      )}
+                    {/* Le pseudo, pas seulement l'avatar : par défaut tout le
+                        monde porte la même image et la colonne ne disait rien. */}
+                    <td className="dealercell">
+                      <Avatar name={seats[m.dealer]!.avatar} size="sm" /> <span>{seats[m.dealer]!.name}</span>
                     </td>
-                    {seats.map((_, p) => (
+                    <td>
+                      {logContracts(m).map((c, k) => (
+                        <span key={c} className="ccell">
+                          {k > 0 && <span className="cplus">+</span>}
+                          <Icon name={CONTRACT_ICON[c]} size={15} /> {CONTRACT_LABEL[c]}
+                        </span>
+                      ))}
+                    </td>
+                    {seats.map((s, p) => (
                       <td key={p} className="pcol">
+                        {/* Le contre se lit dans la colonne de celui qui l'a posé :
+                            un compteur « ×2 » à côté du contrat ne disait pas qui. */}
+                        {m.contres.includes(p as PlayerId) && (
+                          <span className="ctrmark" title={`${s.name} a contré`}>
+                            <Icon name="bolt" size={12} /> contre
+                          </span>
+                        )}
                         <span className={`pts ${m.points[p]! > 0 ? 'neg' : m.points[p]! < 0 ? 'pos' : 'zero'}`}>
                           {m.points[p]! > 0 ? '+' : ''}{m.points[p]}
                         </span>
@@ -502,7 +531,12 @@ function MancheRecap({ view, index, onClose }: { view: TableView; index: number;
         <div className="rc-head">
           <span className="rc-step">Manche {index + 1} terminée</span>
           <h3>
-            <Icon name={CONTRACT_ICON[log.contract]} size={18} /> {CONTRACT_LABEL[log.contract]}
+            {logContracts(log).map((c, i) => (
+              <span key={c}>
+                {i > 0 && ' + '}
+                <Icon name={CONTRACT_ICON[c]} size={18} /> {CONTRACT_LABEL[c]}
+              </span>
+            ))}
           </h3>
           <span className="rc-dealer">
             donneur : {seats[log.dealer]!.name}
@@ -600,13 +634,21 @@ function LastTrickModal({ view, trick, onClose }: { view: TableView; trick: Last
 /** Contrats restant à donner par joueur — déplacé ici depuis les sièges (allégés). */
 function ContractsOverview({ view }: { view: TableView }) {
   const { state, seats } = view;
+  const pool = state.options?.contracts ?? ALL_CONTRACTS;
+  const given = (state.options?.perDealer ?? pool.length) * (state.options?.combine ?? 1);
   return (
     <div className="contracts-overview">
       <h3>Contrats restant à donner</h3>
+      {given < pool.length && (
+        <p className="muted cov-note">
+          Chacun n'en donnera que {given} sur {pool.length} : certains ne sortiront pas, et
+          personne ne sait lesquels d'avance.
+        </p>
+      )}
       <div className="cov-grid">
         {seats.map((s, p) => {
           const done = state.playedContracts[p] ?? [];
-          const remaining = ALL_CONTRACTS.filter((c) => !done.includes(c));
+          const remaining = pool.filter((c) => !done.includes(c));
           return (
             <div key={p} className="cov-player">
               <div className="cov-name"><Avatar name={s.avatar} size="sm" /> {s.name}</div>
@@ -617,7 +659,7 @@ function ContractsOverview({ view }: { view: TableView }) {
                   remaining.map((c) => (
                     <span
                       key={c}
-                      className={`cabbr ${state.currentContract === c && p === state.dealer ? 'now' : ''}`}
+                      className={`cabbr ${state.currentContracts.includes(c) && p === state.dealer ? 'now' : ''}`}
                       title={CONTRACT_LABEL[c]}
                     >
                       <Icon name={CONTRACT_ICON[c]} size={13} /> {CONTRACT_ABBR[c]}
@@ -685,15 +727,20 @@ function Center({ view }: { view: TableView }) {
   if (state.phase === 'DONE') return <DoneScreen view={view} />;
   if (state.phase === 'CHOOSE_CONTRACT') {
     if (state.dealer === you) return <Waiting text="Choisis ton contrat ci-dessous" />;
-    return <Waiting text={`${seats[state.dealer]!.name} choisit le contrat…`} />;
+    // Ce qu'il lui reste à donner : c'est ce qui permet d'anticiper son annonce.
+    return (
+      <div className="announce-wrap">
+        <Waiting text={`${seats[state.dealer]!.name} choisit le contrat…`} />
+        <DealerHand state={state} seats={seats} />
+      </div>
+    );
   }
   if (state.phase === 'CONTRE') {
     return (
       <div className="announce-wrap">
         <ContractAnnounce state={state} seats={seats} />
-        {actor === you ? <ContrePanel view={view} /> : (
-          <p className="muted">{seats[actor ?? 0]!.name} décide de contrer…</p>
-        )}
+        <ContreStatus view={view} />
+        {actor === you && <ContrePanel view={view} />}
       </div>
     );
   }
@@ -703,15 +750,83 @@ function Center({ view }: { view: TableView }) {
 }
 
 function ContractAnnounce({ state, seats }: { state: MatchState; seats: SeatLabel[] }) {
-  const c = state.currentContract;
-  if (!c) return null;
+  const cs = state.currentContracts;
+  if (cs.length === 0) return null;
   return (
     <div className="announce">
-      <div className="alabel">Contrat annoncé par {seats[state.dealer]!.name}</div>
-      <div className="abig"><Icon name={CONTRACT_ICON[c]} size={26} /> {CONTRACT_LABEL[c]}</div>
-      {c === 'REUSSITE' && state.reussiteRank != null && (
+      <div className="alabel">
+        {cs.length > 1 ? 'Contrats annoncés' : 'Contrat annoncé'} par {seats[state.dealer]!.name}
+      </div>
+      <div className="abig">
+        {cs.map((c, i) => (
+          <span key={c}>
+            {i > 0 && <span className="aplus">+</span>}
+            <Icon name={CONTRACT_ICON[c]} size={26} /> {CONTRACT_LABEL[c]}
+          </span>
+        ))}
+      </div>
+      {cs.length > 1 && <div className="aheight">les deux barèmes se cumulent sur la même donne</div>}
+      {cs[0] === 'REUSSITE' && state.reussiteRank != null && (
         <div className="aheight">hauteur {rankLabel(state.reussiteRank)}</div>
       )}
+    </div>
+  );
+}
+
+/** Ce qu'il reste à donner au donneur pendant qu'il réfléchit à son annonce. */
+function DealerHand({ state, seats }: { state: MatchState; seats: SeatLabel[] }) {
+  const pool = state.options?.contracts ?? ALL_CONTRACTS;
+  const done = state.playedContracts[state.dealer] ?? [];
+  const remaining = pool.filter((c) => !done.includes(c));
+  if (remaining.length === 0) return null;
+  return (
+    <div className="dealerhand">
+      <span className="dh-label">Il peut encore donner</span>
+      <span className="dh-chips">
+        {remaining.map((c) => (
+          <span key={c} className="cabbr" title={CONTRACT_LABEL[c]}>
+            <Icon name={CONTRACT_ICON[c]} size={13} /> {CONTRACT_ABBR[c]}
+          </span>
+        ))}
+      </span>
+      {done.length > 0 && (
+        <span className="dh-done">déjà donnés : {done.map((c) => CONTRACT_ABBR[c]).join(', ')}</span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Qui a contré, qui a passé, qui n'a pas encore répondu. Une simple phrase
+ * « X décide de contrer… » ne disait rien de ce qui avait déjà été décidé.
+ */
+function ContreStatus({ view }: { view: TableView }) {
+  const { state, seats, actor } = view;
+  const order = [1, 2, 3].map((i) => ((state.dealer + i) % 4) as PlayerId);
+  return (
+    <div className="contre-status">
+      {order.map((p) => {
+        const contre = state.contres.includes(p);
+        const decided = state.contreDecided.includes(p);
+        const turn = actor === p;
+        return (
+          <span key={p} className={`cs-row ${decided ? (contre ? 'yes' : 'no') : turn ? 'turn' : 'wait'}`}>
+            <Avatar name={seats[p]!.avatar} size="sm" />
+            <b>{seats[p]!.name}</b>
+            {decided ? (
+              contre ? (
+                <span className="cs-tag yes"><Icon name="bolt" size={13} /> a contré</span>
+              ) : (
+                <span className="cs-tag no">a passé</span>
+              )
+            ) : turn ? (
+              <span className="cs-tag turn">décide…</span>
+            ) : (
+              <span className="cs-tag wait">en attente</span>
+            )}
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -759,9 +874,17 @@ function ReussiteView({ round, seats }: { round: ReussiteState; seats: SeatLabel
           return (
             <div key={s} className={`rfile ${SUIT_RED[s] ? 'red' : 'black'}`}>
               {fan ? (
+                // Les deux bornes côte à côte et espacées : ce sont elles qui
+                // disent ce qu'on peut poser, les superposer les rendait
+                // illisibles. Au singleton, une seule carte s'affiche.
                 <div className="rfan">
-                  <PlayingCard card={{ suit: s, rank: fan.low }} size="sm" />
-                  {fan.high !== fan.low && <PlayingCard card={{ suit: s, rank: fan.high }} size="sm" className="stacked" />}
+                  <PlayingCard card={{ suit: s, rank: fan.low }} size="md" />
+                  {fan.high !== fan.low && (
+                    <>
+                      <span className="rspan">{fan.high - fan.low > 1 ? `+${fan.high - fan.low - 1}` : ''}</span>
+                      <PlayingCard card={{ suit: s, rank: fan.high }} size="md" />
+                    </>
+                  )}
                 </div>
               ) : (
                 <div className="rempty">{SUIT_SYMBOL[s]}</div>
@@ -782,9 +905,13 @@ function ReussiteView({ round, seats }: { round: ReussiteState; seats: SeatLabel
 function ContractBar({ view }: { view: TableView }) {
   const { state, hint, you, actions } = view;
   const [reussite, setReussite] = useState(false);
+  // Annonce en attente de complément (manche combinée : il en faut deux).
+  const [picked, setPicked] = useState<ContractId[]>([]);
   const options = legalContracts(state);
+  const need = state.options.combine ?? 1;
   const handRanks = [...new Set((state.pendingHands?.[you] ?? []).map((c) => c.rank))].sort((a, b) => b - a);
   const tip = hint?.t === 'CHOOSE_CONTRACT' ? hint : null;
+  const hinted = (c: ContractId) => tip?.contracts.includes(c) ?? false;
 
   if (reussite) {
     return (
@@ -797,8 +924,8 @@ function ContractBar({ view }: { view: TableView }) {
           {handRanks.map((r) => (
             <button
               key={r}
-              className={`cb-chip cb-height ${tip?.contract === 'REUSSITE' && tip.rank === r ? 'hinted' : ''}`}
-              onClick={() => actions.chooseContract('REUSSITE', r as Rank)}
+              className={`cb-chip cb-height ${hinted('REUSSITE') && tip!.rank === r ? 'hinted' : ''}`}
+              onClick={() => actions.chooseContract(['REUSSITE'], r as Rank)}
             >
               {rankLabel(r)}
             </button>
@@ -808,26 +935,53 @@ function ContractBar({ view }: { view: TableView }) {
     );
   }
 
+  // À un contrat par manche, cliquer annonce directement. À deux, on empile la
+  // sélection et on valide : annoncer par erreur une paire est irréversible.
+  const onPick = (c: ContractId) => {
+    if (need === 1) {
+      if (c === 'REUSSITE') setReussite(true);
+      else actions.chooseContract([c]);
+      return;
+    }
+    setPicked((cur) => (cur.includes(c) ? cur.filter((x) => x !== c) : [...cur, c].slice(-need)));
+  };
+
   return (
     <div className="contract-bar">
       <div className="cb-head">
-        <b>À toi de donner — choisis un contrat</b>
+        <b>
+          À toi de donner — {need === 1 ? 'choisis un contrat' : `choisis ${need} contrats (${picked.length}/${need})`}
+        </b>
         {tip && (
-          <span className="cb-tip"><Icon name="bulb" size={15} /> {CONTRACT_LABEL[tip.contract]}{tip.contract === 'REUSSITE' && tip.rank != null ? ` (${rankLabel(tip.rank)})` : ''}</span>
+          <span className="cb-tip">
+            <Icon name="bulb" size={15} /> {announceLabel(tip.contracts)}
+            {tip.contracts[0] === 'REUSSITE' && tip.rank != null ? ` (${rankLabel(tip.rank)})` : ''}
+          </span>
         )}
       </div>
       <div className="cb-row">
         {options.map((c: ContractId) => (
           <button
             key={c}
-            className={`cb-chip ${tip?.contract === c ? 'hinted' : ''}`}
+            className={`cb-chip ${picked.includes(c) ? 'picked' : ''} ${hinted(c) ? 'hinted' : ''}`}
             title={CONTRACT_HINT[c]}
-            onClick={() => (c === 'REUSSITE' ? setReussite(true) : actions.chooseContract(c))}
+            onClick={() => onPick(c)}
           >
             {CONTRACT_LABEL[c]}
           </button>
         ))}
       </div>
+      {need > 1 && (
+        <div className="cb-confirm">
+          <button disabled={picked.length !== need} onClick={() => actions.chooseContract(picked)}>
+            <Icon name="check" size={16} />
+            Annoncer{picked.length > 0 ? ` ${announceLabel(picked)}` : ''}
+          </button>
+          {picked.length > 0 && (
+            <button className="ghost tiny" onClick={() => setPicked([])}>Effacer</button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -878,7 +1032,9 @@ function HumanDock({ view }: { view: TableView }) {
   const n = cards.length;
 
   return (
-    <footer className="dock">
+    // À ton tour, la main grossit — quitte à mordre sur ta plaque de joueur :
+    // c'est le moment où lire ses cartes compte plus que de voir son avatar.
+    <footer className={`dock ${myTurn ? 'myturn' : ''}`}>
       <div className="handbar">
         <span className="handlabel">Votre main{myTurn ? ' · à vous' : ''}</span>
         {myTurn && hintCardId && <span className="handhint"><Icon name="bulb" size={14} /> coup conseillé surligné</span>}

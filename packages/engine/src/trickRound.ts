@@ -20,8 +20,9 @@ export function legalPlays(s: TrickRoundState, player: PlayerId): Card[] {
   const led = ledSuit(s);
 
   if (led === null) {
-    // Entame : restriction cœur pour les contrats concernés.
-    if (CONTRACTS[s.contract].heartRestricted) {
+    // Entame : restriction cœur pour les contrats concernés. En manche
+    // combinée, la restriction la plus stricte l'emporte.
+    if (s.contracts.some((c) => CONTRACTS[c].heartRestricted)) {
       const nonHearts = hand.filter((c) => !isHeart(c));
       if (nonHearts.length > 0) return nonHearts; // interdit d'entamer cœur
     }
@@ -37,9 +38,9 @@ export function isLegalPlay(s: TrickRoundState, player: PlayerId, card: Card): b
   return legalPlays(s, player).some((c) => cardEquals(c, card));
 }
 
-export function initTrickRound(contract: ContractId, hands: Card[][], firstLeader: PlayerId): TrickRoundState {
+export function initTrickRound(contracts: ContractId[], hands: Card[][], firstLeader: PlayerId): TrickRoundState {
   return {
-    contract,
+    contracts,
     hands: hands.map((h) => h.slice()),
     leader: firstLeader,
     currentTrick: [],
@@ -71,8 +72,12 @@ export function playCard(s: TrickRoundState, player: PlayerId, card: Card): Tric
   const completedTricks = [...s.completedTricks, currentTrick];
   const wonBy = [...s.wonBy, winner];
 
-  // Barbu : la manche s'arrête dès que le Roi de cœur est ramassé.
-  const kingTaken = CONTRACTS[s.contract].stopsOnKingOfHearts && currentTrick.some((pc) => isKingOfHearts(pc.card));
+  // Barbu : la manche s'arrête dès que le Roi de cœur est ramassé. Sauf en
+  // manche combinée — l'autre contrat, lui, se joue jusqu'à la dernière carte.
+  const kingTaken =
+    s.contracts.length === 1 &&
+    CONTRACTS[s.contracts[0]!].stopsOnKingOfHearts &&
+    currentTrick.some((pc) => isKingOfHearts(pc.card));
   const allPlayed = hands.every((h) => h.length === 0);
   const finished = kingTaken || allPlayed;
 

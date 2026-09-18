@@ -435,10 +435,10 @@ export class GameRoom {
       pause = { trick, winner: trickWinner(trick).player };
     }
     const next = applyMatchAction(m, action, this.rng);
-    if (next.mancheCount > m.mancheCount && m.currentContract) {
+    if (next.mancheCount > m.mancheCount && m.currentContracts.length > 0) {
       this.history.push({
         dealer: m.dealer,
-        contract: m.currentContract,
+        contracts: m.currentContracts,
         contres: m.contres,
         points: next.scores.map((sc, p) => sc - m.scores[p]!),
       });

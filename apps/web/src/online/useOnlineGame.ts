@@ -52,7 +52,8 @@ export interface OnlineGame {
   denyPause: () => void;
   fillBot: (seat: PlayerId, level?: Difficulty) => void;
   // Actions de jeu
-  chooseContract: (contract: ContractId, rank?: Rank) => void;
+  /** Annonce du donneur : un contrat, ou deux en partie éclair. */
+  chooseContract: (contracts: ContractId[], rank?: Rank) => void;
   respondContre: (contre: boolean) => void;
   playCard: (card: Card) => void;
   reussitePlay: (card: Card) => void;
@@ -190,7 +191,7 @@ export function useOnlineGame(code: string, me: OnlineIdentity): OnlineGame {
     askPause: () => send({ t: 'ASK_PAUSE' }),
     denyPause: () => send({ t: 'DENY_PAUSE' }),
     fillBot: (seat, level) => send({ t: 'FILL_BOT', seat, level }),
-    chooseContract: (contract, rank) => send({ t: 'ACTION', action: { t: 'CHOOSE_CONTRACT', contract, rank } }),
+    chooseContract: (contracts, rank) => send({ t: 'ACTION', action: { t: 'CHOOSE_CONTRACT', contracts, rank } }),
     respondContre: (contre) =>
       send({ t: 'ACTION', action: { t: 'CONTRE', player: youSeat ?? 0, contre } }),
     playCard: (card) => send({ t: 'ACTION', action: { t: 'PLAY_CARD', player: youSeat ?? 0, card } }),
