@@ -22,7 +22,7 @@ export function RulesScreen() {
     <div className="hub">
       <div className="hubhead">
         <h2>Règles</h2>
-        <p className="muted">Le score le plus bas gagne. 7 contrats, 28 manches.</p>
+        <p className="muted">Le score le plus bas gagne. 7 contrats, 28 manches en partie complète.</p>
       </div>
 
       <div className="panel">
@@ -30,8 +30,15 @@ export function RulesScreen() {
           Chaque contrat désigne ce qu'il faut <b>éviter</b> de ramasser. À chaque manche, le donneur
           choisit un contrat qu'il n'a pas encore donné, puis entame le premier pli. On doit toujours
           <b> fournir la couleur demandée</b>&nbsp;; sinon on défausse ce qu'on veut, et une défausse
-          ne gagne jamais un pli. À la fin des 28 manches, le joueur avec le <b>moins de points</b>
+          ne gagne jamais un pli. À la fin de la partie, le joueur avec le <b>moins de points</b>
           {' '}l'emporte.
+        </p>
+        <p className="rules-intro">
+          Une <b>partie courte</b> se joue en 16 manches : chacun ne donne que 4 contrats, mais les
+          choisit librement parmi les 7 — trois resteront au placard, et on ne sait pas lesquels
+          d'avance. Une <b>partie éclair</b> tient en 8 manches : le donneur annonce{' '}
+          <b>deux contrats d'un coup</b>, joués sur une seule donne, dont les points s'additionnent.
+          Le Roi de cœur n'y arrête plus la manche — l'autre contrat, lui, continue de tourner.
         </p>
       </div>
 

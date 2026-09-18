@@ -11,6 +11,7 @@ import { fileToAvatarDataUrl } from '../ui/avatarImage.js';
 import { Icon } from '../ui/Icon.js';
 import { useHubTab } from '../ui/useHubTab.js';
 import { SavedGamesList } from '../solo/SavedGamesList.js';
+import { CARD_SCALES, useDisplay } from './display.js';
 
 type Tab = 'account' | 'stats' | 'cards' | 'games';
 
@@ -59,7 +60,12 @@ export function SettingsScreen({
           </>
         )}
         {tab === 'stats' && <StatsPanel token={auth.token} />}
-        {tab === 'cards' && <CardSortPanel />}
+        {tab === 'cards' && (
+          <>
+            <CardSortPanel />
+            <DisplayPanel />
+          </>
+        )}
         {tab === 'games' && <MyGamesPanel token={auth.token} onResume={onResumeGame} />}
       </div>
     </div>
@@ -236,6 +242,55 @@ function CardSortPanel() {
         <div className="sortpreview">
           {sortHand(SAMPLE, pref).map((c) => (
             <PlayingCard key={`${c.suit}${c.rank}`} card={c} size="sm" />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Taille des cartes et style visuel — les réglages posés par l'assistant. */
+function DisplayPanel() {
+  const [pref, setPref] = useCardSort();
+  const [display, setDisplay] = useDisplay();
+
+  return (
+    <div className="panel">
+      <div className="panelhead"><h3>Affichage</h3></div>
+      <p className="muted">Taille des cartes et style de la table. Propre à ce navigateur.</p>
+
+      <div className="field">
+        <label>Taille des cartes</label>
+        <div className="tabs">
+          {CARD_SCALES.map((s) => (
+            <button
+              key={s.id}
+              className={display.cardScale === s.id ? 'on' : 'ghost'}
+              onClick={() => setDisplay({ cardScale: s.id })}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="field">
+        <label>Style</label>
+        <div className="tabs">
+          <button className={display.theme === 'lite' ? 'on' : 'ghost'} onClick={() => setDisplay({ theme: 'lite' })}>
+            Sobre
+          </button>
+          <button className={display.theme === 'contraste' ? 'on' : 'ghost'} onClick={() => setDisplay({ theme: 'contraste' })}>
+            Contrasté
+          </button>
+        </div>
+      </div>
+
+      <div className="field">
+        <label>Aperçu</label>
+        <div className="sortpreview">
+          {sortHand(SAMPLE, pref).map((c) => (
+            <PlayingCard key={`${c.suit}${c.rank}`} card={c} size="md" />
           ))}
         </div>
       </div>

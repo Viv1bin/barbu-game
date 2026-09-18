@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Account, AuthResponse } from '@barbu/engine';
 import { apiFetch, ApiError } from './api.js';
+import { requestOnboarding } from '../settings/display.js';
 
 const TOKEN_KEY = 'barbu.auth.v1';
 
@@ -78,6 +79,9 @@ export function useAuth(): Auth {
 
   const register = useCallback(async (pseudo: string, password: string, avatar: string) => {
     apply(await apiFetch<AuthResponse>('/auth/register', { body: { pseudo, password, avatar } }));
+    // Compte neuf : on lui demande ses préférences d'affichage plutôt que de le
+    // laisser les découvrir au fond d'un onglet de réglages.
+    requestOnboarding();
   }, []);
 
   const login = useCallback(async (pseudo: string, password: string) => {

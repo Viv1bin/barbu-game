@@ -16,8 +16,10 @@ export interface CardSortPref {
 }
 
 const KEY = 'barbu.cardsort.v1';
-const ALL_SUITS: Suit[] = ['S', 'H', 'C', 'D'];
-export const DEFAULT_SORT: CardSortPref = { suitOrder: ['S', 'H', 'C', 'D'], strongSide: 'left' };
+const ALL_SUITS: Suit[] = ['H', 'S', 'D', 'C'];
+// Rouge / noir / rouge / noir : deux couleurs voisines ne se confondent jamais
+// du coin de l'œil, et c'est l'ordre dans lequel la plupart des joueurs rangent.
+export const DEFAULT_SORT: CardSortPref = { suitOrder: ['H', 'S', 'D', 'C'], strongSide: 'left' };
 /** Événement interne pour propager un changement dans le même onglet. */
 const EVENT = 'barbu:cardsort';
 

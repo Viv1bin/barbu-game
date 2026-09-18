@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { GameRoom, TIMING, type RoomSnapshot } from './core.js';
 import { DEFAULT_MATCH_OPTIONS } from '@barbu/engine';
-import type { Account, ClientMsg, ServerMsg } from '@barbu/engine';
+import type { Account, ClientMsg, MatchOptions, ServerMsg } from '@barbu/engine';
 
 // Faux harnais de transport : capture les messages envoyés à chaque connexion.
 class FakeConn {
@@ -174,8 +174,12 @@ describe('serveur en ligne', () => {
 
   // --- Pause, absences, reprise --------------------------------------------
 
-  /** Salle prête : hôte en siège 0, second humain en siège 1, deux bots, partie lancée. */
-  async function startedRoom() {
+  /**
+   * Salle prête : hôte en siège 0, second humain en siège 1, deux bots, partie
+   * lancée. `allowBots` est activé — c'est la salle sur laquelle les tests de
+   * remplacement s'appuient ; le refus quand l'option est coupée a son propre test.
+   */
+  async function startedRoom(options: Partial<MatchOptions> = {}) {
     const room = new FakeRoom();
     const server = new GameRoom(room);
     const host = new FakeConn('h');
@@ -188,7 +192,10 @@ describe('serveur en ligne', () => {
     }
     // Donneur fixé au siège 0 : les tests pilotent l'hôte, il doit être celui
     // qui annonce le contrat (le tirage au sort du donneur est testé ailleurs).
-    server.onMessage(msg({ t: 'START', options: { ...DEFAULT_MATCH_OPTIONS, randomDealer: false } }), host);
+    server.onMessage(
+      msg({ t: 'START', options: { ...DEFAULT_MATCH_OPTIONS, randomDealer: false, allowBots: true, ...options } }),
+      host
+    );
     await flush();
     return { room, server, host, other };
   }
@@ -328,6 +335,20 @@ describe('serveur en ligne', () => {
     await flush();
     expect(server.seats[1]!.kind).toBe('human');
     expect(server.seats[1]!.connId).toBe('o2');
+  });
+
+  it('FILL_BOT est refusé si la partie a été créée sans remplacement par des bots', async () => {
+    const { server, host, other } = await startedRoom({ allowBots: false });
+    server.onClose(other);
+    await flush();
+    host.sent.length = 0;
+
+    server.onMessage(msg({ t: 'FILL_BOT', seat: 1, level: 'facile' }), host);
+    await flush();
+
+    // Le siège reste au joueur parti : la partie l'attend, c'est tout.
+    expect(server.seats[1]!.kind).toBe('human');
+    expect(host.sent.some((m) => m.t === 'ERROR')).toBe(true);
   });
 
   it('FILL_BOT est refusé à un joueur qui n\'est pas l\'hôte', async () => {
