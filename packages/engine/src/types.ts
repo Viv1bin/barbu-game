@@ -91,5 +91,7 @@ export type Action =
   | { t: 'CHOOSE_CONTRACT'; contracts: ContractId[]; rank?: Rank }
   | { t: 'CONTRE'; player: PlayerId; contre: boolean }
   | { t: 'PLAY_CARD'; player: PlayerId; card: Card }
+  /** Reprend sa carte tant que le joueur suivant n'a pas joué par-dessus. */
+  | { t: 'UNDO_PLAY'; player: PlayerId }
   | { t: 'REUSSITE_PLAY'; player: PlayerId; card: Card }
   | { t: 'REUSSITE_PASS'; player: PlayerId };

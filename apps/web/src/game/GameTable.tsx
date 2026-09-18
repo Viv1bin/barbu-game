@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import {
   ALL_CONTRACTS,
   canPass,
+  canUndoPlay,
   cardId,
   legalContracts,
   legalPlays,
@@ -71,6 +72,8 @@ export interface TableActions {
   chooseContract: (contracts: ContractId[], rank?: Rank) => void;
   respondContre: (contre: boolean) => void;
   playCard: (card: Card) => void;
+  /** Reprend sa carte tant que le joueur suivant n'a pas joué par-dessus. */
+  undoPlay: () => void;
   reussitePlay: (card: Card) => void;
   reussitePass: () => void;
 }
@@ -262,17 +265,22 @@ function RoomBanner({ view, room }: { view: TableView; room: RoomControl }) {
   // sa place pour de bon dans cette partie).
   const [botSeat, setBotSeat] = useState<PlayerId | null>(null);
 
+  // Le remplacement par un bot a été autorisé (ou non) à la création de la salle.
+  const botsAllowed = view.state.options?.allowBots === true;
+
   if (room.absent.length > 0) {
     return (
       <div className="roombanner warn">
         <span>
           <Icon name="warning" size={16} />
           Partie suspendue — {room.absent.map(name).join(', ')} {room.absent.length > 1 ? 'sont partis' : 'est parti'}.
-          {room.isOwner
-            ? ' Attends son retour, ou confie sa place à un bot.'
-            : ' Le créateur de la partie peut le remplacer par un bot.'}
+          {!botsAllowed
+            ? ' La partie reprendra à son retour.'
+            : room.isOwner
+              ? ' Attends son retour, ou confie sa place à un bot.'
+              : ' Le créateur de la partie peut le remplacer par un bot.'}
         </span>
-        {room.isOwner && (
+        {room.isOwner && botsAllowed && (
           <span className="rb-actions">
             {room.absent.map((p) => (
               <button key={p} className="tiny" onClick={() => setBotSeat(p)}>
@@ -1022,6 +1030,8 @@ function HumanDock({ view }: { view: TableView }) {
   }, [myTurn, round, you]);
 
   const canHumanPass = myTurn && isReussite(round) && canPass(round, you);
+  // Fenêtre de reprise : la carte est posée, personne n'a encore joué dessus.
+  const canUndo = !busy && isTrick(round) && canUndoPlay(round, you);
   const onCard = (card: Card) => {
     if (!myTurn) return;
     if (isTrick(round)) actions.playCard(card);
@@ -1040,6 +1050,11 @@ function HumanDock({ view }: { view: TableView }) {
         {myTurn && hintCardId && <span className="handhint"><Icon name="bulb" size={14} /> coup conseillé surligné</span>}
         {canHumanPass && (
           <button className={`pass ${hintPass ? 'hinted' : ''}`} onClick={actions.reussitePass}>Passer</button>
+        )}
+        {canUndo && (
+          <button className="undo" onClick={actions.undoPlay}>
+            <Icon name="arrowLeft" size={14} />Reprendre ma carte
+          </button>
         )}
       </div>
       {/* `--n` sert au calcul CSS du chevauchement : l'éventail occupe toute la

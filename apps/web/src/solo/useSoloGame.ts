@@ -112,6 +112,8 @@ export interface SoloGame {
   chooseContract: (contracts: ContractId[], rank?: Rank) => void;
   respondContre: (contre: boolean) => void;
   playCard: (card: Card) => void;
+  /** Reprend sa carte tant que le bot suivant n'a pas joué par-dessus. */
+  undoPlay: () => void;
   reussitePlay: (card: Card) => void;
   reussitePass: () => void;
   newGame: () => void;
@@ -221,6 +223,7 @@ export function useSoloGame(level: Difficulty, aid = false, opts: SoloOptions = 
     chooseContract: (contracts, rank) => step({ t: 'CHOOSE_CONTRACT', contracts, rank }),
     respondContre: (contre) => step({ t: 'CONTRE', player: HUMAN, contre }),
     playCard: (card) => step({ t: 'PLAY_CARD', player: HUMAN, card }),
+    undoPlay: () => step({ t: 'UNDO_PLAY', player: HUMAN }),
     reussitePlay: (card) => step({ t: 'REUSSITE_PLAY', player: HUMAN, card }),
     reussitePass: () => step({ t: 'REUSSITE_PASS', player: HUMAN }),
     newGame: () => {

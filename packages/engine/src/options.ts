@@ -28,6 +28,13 @@ export interface MatchOptions {
   contre: boolean;
   /** Donneur de départ tiré au sort plutôt que le joueur 0. */
   randomDealer: boolean;
+  /**
+   * Autorise le créateur de la salle à confier à un bot le siège d'un joueur
+   * parti. Coupé (par défaut), une absence suspend la partie jusqu'au retour :
+   * on ne se fait pas remplacer par une machine sans que ç'ait été décidé à la
+   * création. Sans effet en solo.
+   */
+  allowBots: boolean;
 }
 
 export const DEFAULT_MATCH_OPTIONS: MatchOptions = {
@@ -36,6 +43,7 @@ export const DEFAULT_MATCH_OPTIONS: MatchOptions = {
   combine: 1,
   contre: true,
   randomDealer: true,
+  allowBots: false,
 };
 
 /** Nombre total de manches d'une partie jouée avec ces options. */
@@ -110,6 +118,7 @@ export function normalizeMatchOptions(raw: unknown): MatchOptions {
     combine,
     contre: o.contre !== false,
     randomDealer: o.randomDealer !== false,
+    allowBots: o.allowBots === true,
   };
 }
 

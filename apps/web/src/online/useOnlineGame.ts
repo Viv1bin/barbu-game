@@ -56,6 +56,8 @@ export interface OnlineGame {
   chooseContract: (contracts: ContractId[], rank?: Rank) => void;
   respondContre: (contre: boolean) => void;
   playCard: (card: Card) => void;
+  /** Reprend sa carte tant que le joueur suivant n'a pas joué par-dessus. */
+  undoPlay: () => void;
   reussitePlay: (card: Card) => void;
   reussitePass: () => void;
 }
@@ -195,6 +197,7 @@ export function useOnlineGame(code: string, me: OnlineIdentity): OnlineGame {
     respondContre: (contre) =>
       send({ t: 'ACTION', action: { t: 'CONTRE', player: youSeat ?? 0, contre } }),
     playCard: (card) => send({ t: 'ACTION', action: { t: 'PLAY_CARD', player: youSeat ?? 0, card } }),
+    undoPlay: () => send({ t: 'ACTION', action: { t: 'UNDO_PLAY', player: youSeat ?? 0 } }),
     reussitePlay: (card) => send({ t: 'ACTION', action: { t: 'REUSSITE_PLAY', player: youSeat ?? 0, card } }),
     reussitePass: () => send({ t: 'ACTION', action: { t: 'REUSSITE_PASS', player: youSeat ?? 0 } }),
   };

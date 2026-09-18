@@ -52,6 +52,31 @@ export function initTrickRound(contracts: ContractId[], hands: Card[][], firstLe
 }
 
 /**
+ * Peut-on reprendre sa carte ? Oui tant que personne n'a joué par-dessus : la
+ * carte est encore seule au-dessus du tas, la reprendre ne change rien à ce que
+ * les autres ont pu voir d'eux-mêmes. Une fois le joueur suivant engagé, il a
+ * décidé *en fonction* de cette carte — la reprendre réécrirait sa décision.
+ */
+export function canUndoPlay(s: TrickRoundState, player: PlayerId): boolean {
+  if (s.finished || s.currentTrick.length === 0) return false;
+  return s.currentTrick[s.currentTrick.length - 1]!.player === player;
+}
+
+/** Reprend la dernière carte posée par `player`. Lève si ce n'est plus possible. */
+export function undoPlay(s: TrickRoundState, player: PlayerId): TrickRoundState {
+  if (!canUndoPlay(s, player)) throw new Error('Trop tard : la carte est recouverte');
+  const last = s.currentTrick[s.currentTrick.length - 1]!;
+  const hands = s.hands.map((h) => h.slice());
+  hands[player] = [...hands[player]!, last.card];
+  const currentTrick = s.currentTrick.slice(0, -1);
+  // `heartsBroken` se redéduit du jeu visible : il ne doit pas rester vrai à
+  // cause d'une carte qu'on vient justement de retirer de la table.
+  const heartsBroken =
+    s.completedTricks.flat().some((pc) => isHeart(pc.card)) || currentTrick.some((pc) => isHeart(pc.card));
+  return { ...s, hands, currentTrick, heartsBroken };
+}
+
+/**
  * Joue une carte. Retourne un nouvel état. Lève si le coup est illégal.
  */
 export function playCard(s: TrickRoundState, player: PlayerId, card: Card): TrickRoundState {

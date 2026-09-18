@@ -12,7 +12,7 @@ import {
 } from './options.js';
 import { botChooseContract, botContre, botReussite, botTrickPlay, type Difficulty } from './bots.js';
 import { scoreReussite, scoreTrickContracts } from './scoring.js';
-import { currentPlayer, initTrickRound, playCard } from './trickRound.js';
+import { currentPlayer, initTrickRound, playCard, undoPlay } from './trickRound.js';
 import { initReussiteRound, reussitePass, reussitePlay } from './reussiteRound.js';
 import type {
   Action,
@@ -194,6 +194,8 @@ export function applyMatchAction(s: MatchState, action: Action, rng: () => numbe
     case 'PLAY': {
       const round = s.round!;
       if ('currentTrick' in round) {
+        // Reprise de carte : ne fait jamais avancer la manche, donc pas de scoring.
+        if (action.t === 'UNDO_PLAY') return { ...s, round: undoPlay(round, action.player) };
         if (action.t !== 'PLAY_CARD') throw new Error('Attendu : PLAY_CARD');
         const nr = playCard(round, action.player, action.card);
         const s2: MatchState = { ...s, round: nr };

@@ -267,6 +267,7 @@ function SoloGameView({
       chooseContract: game.chooseContract,
       respondContre: game.respondContre,
       playCard: game.playCard,
+      undoPlay: game.undoPlay,
       reussitePlay: game.reussitePlay,
       reussitePass: game.reussitePass,
     },

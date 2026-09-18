@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { deal, fullDeck, shuffle } from './cards.js';
-import { currentPlayer, initTrickRound, legalPlays, playCard } from './trickRound.js';
+import { canUndoPlay, currentPlayer, initTrickRound, legalPlays, playCard, undoPlay } from './trickRound.js';
 import { randomBot } from './bots.js';
 import { scoreBarbu, scoreCoeur, type TrickResult } from './scoring.js';
 import type { Card, PlayerId } from './types.js';
@@ -85,5 +85,43 @@ describe('simulation complète (randomBot)', () => {
     const res: TrickResult = { completedTricks: s.completedTricks, wonBy: s.wonBy };
     const total = scoreCoeur(res).reduce((a, b) => a + b, 0);
     expect(total).toBe(130); // 13 cœurs * 10
+  });
+});
+
+describe('reprise de carte', () => {
+  const hands = (): Card[][] => [
+    [{ suit: 'S', rank: 9 }, { suit: 'D', rank: 4 }],
+    [{ suit: 'S', rank: 3 }, { suit: 'D', rank: 7 }],
+    [{ suit: 'S', rank: 5 }, { suit: 'C', rank: 2 }],
+    [{ suit: 'S', rank: 8 }, { suit: 'C', rank: 6 }],
+  ];
+
+  it('rend la carte à sa main tant que personne n’a joué dessus', () => {
+    let s = initTrickRound(['PLIS'], hands(), 0);
+    s = playCard(s, 0, { suit: 'S', rank: 9 });
+    expect(canUndoPlay(s, 0)).toBe(true);
+    s = undoPlay(s, 0);
+    expect(s.currentTrick).toHaveLength(0);
+    expect(s.hands[0]).toHaveLength(2);
+    expect(currentPlayer(s)).toBe(0);
+  });
+
+  it('refuse dès que le joueur suivant a posé', () => {
+    let s = initTrickRound(['PLIS'], hands(), 0);
+    s = playCard(s, 0, { suit: 'S', rank: 9 });
+    s = playCard(s, 1, { suit: 'S', rank: 3 });
+    expect(canUndoPlay(s, 0)).toBe(false);
+    expect(() => undoPlay(s, 0)).toThrow();
+    // Le dernier à avoir joué, lui, peut encore se reprendre.
+    expect(canUndoPlay(s, 1)).toBe(true);
+  });
+
+  it('oublie l’ouverture du cœur quand c’est la carte reprise qui l’avait ouverte', () => {
+    const h: Card[][] = [[{ suit: 'H', rank: 5 }], [{ suit: 'H', rank: 6 }], [], []];
+    let s = initTrickRound(['PLIS'], h, 0);
+    s = playCard(s, 0, { suit: 'H', rank: 5 });
+    expect(s.heartsBroken).toBe(true);
+    s = undoPlay(s, 0);
+    expect(s.heartsBroken).toBe(false);
   });
 });
