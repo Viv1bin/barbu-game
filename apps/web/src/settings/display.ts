@@ -5,9 +5,13 @@ import { useCallback, useEffect, useState } from 'react';
 // concernent que le rendu, pas les règles — d'où le stockage local, par
 // navigateur, à côté du tri de la main (`cardSort.ts`).
 //
-// `onboarding` n'est pas une préférence mais un drapeau : il vaut true le temps
-// que l'assistant de première configuration ait été vu. Il vit ici parce que
-// c'est exactement ce que l'assistant règle.
+// `onboarded` n'est pas une préférence mais un drapeau : il ne passe à true
+// qu'une fois l'assistant de première configuration traversé. Il vit ici parce
+// que c'est exactement ce que l'assistant règle.
+//
+// Il est faux par défaut, donc absent = assistant à montrer. C'est voulu : les
+// comptes créés avant l'assistant n'ont pas de drapeau et le verront à leur
+// prochaine connexion, une fois, comme tout le monde.
 // ---------------------------------------------------------------------------
 
 /** Style visuel de la table. `contraste` durcit bordures, fonds et couleurs. */
@@ -17,14 +21,14 @@ export interface DisplayPref {
   /** Facteur appliqué à toutes les cartes (0.85 à 1.4). */
   cardScale: number;
   theme: Theme;
-  /** true tant que l'assistant de première configuration n'a pas été fait. */
-  onboarding: boolean;
+  /** true une fois l'assistant de première configuration fait (ou passé). */
+  onboarded: boolean;
 }
 
 const KEY = 'barbu.display.v1';
 const EVENT = 'barbu:display';
 
-export const DEFAULT_DISPLAY: DisplayPref = { cardScale: 1, theme: 'lite', onboarding: false };
+export const DEFAULT_DISPLAY: DisplayPref = { cardScale: 1, theme: 'lite', onboarded: false };
 
 /** Tailles proposées par l'assistant et les réglages. */
 export const CARD_SCALES: { id: number; label: string }[] = [
@@ -39,7 +43,7 @@ function normalize(p: Partial<DisplayPref> | null): DisplayPref {
   return {
     cardScale: Number.isFinite(n) ? Math.min(1.4, Math.max(0.85, n)) : 1,
     theme: p?.theme === 'contraste' ? 'contraste' : 'lite',
-    onboarding: p?.onboarding === true,
+    onboarded: p?.onboarded === true,
   };
 }
 
@@ -61,12 +65,13 @@ function write(pref: DisplayPref): void {
 }
 
 /**
- * Marque qu'un assistant de configuration est attendu. Appelé à l'inscription :
- * un compte tout neuf mérite qu'on lui demande ses préférences plutôt que de le
- * laisser les découvrir dans un onglet de réglages.
+ * Redemande l'assistant de configuration. Appelé à l'inscription : un compte
+ * tout neuf mérite qu'on lui demande ses préférences plutôt que de le laisser
+ * les découvrir dans un onglet de réglages — y compris sur un navigateur où
+ * quelqu'un d'autre a déjà répondu.
  */
 export function requestOnboarding(): void {
-  write({ ...read(), onboarding: true });
+  write({ ...read(), onboarded: false });
 }
 
 /** Applique les préférences au document (variables CSS lues par la feuille de style). */

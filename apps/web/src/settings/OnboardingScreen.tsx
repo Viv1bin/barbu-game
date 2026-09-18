@@ -18,7 +18,8 @@ const THEMES: { id: Theme; title: string; desc: string }[] = [
 ];
 
 /**
- * Première configuration, proposée juste après l'inscription. Les trois
+ * Première configuration, proposée après l'inscription et, une fois, aux
+ * comptes plus anciens qui ne l'ont jamais vue passer. Les trois
  * réglages qui décident du confort de lecture d'une partie — ordre des
  * couleurs, taille des cartes, style — au lieu de les laisser dormir au fond
  * d'un onglet de réglages. Tout est modifiable ensuite dans « Mon profil ».
@@ -37,7 +38,7 @@ export function OnboardingScreen({ pseudo, onDone }: { pseudo: string; onDone: (
   };
 
   const finish = () => {
-    setDisplay({ onboarding: false });
+    setDisplay({ onboarded: true });
     onDone();
   };
 

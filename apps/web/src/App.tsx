@@ -54,9 +54,11 @@ export function App() {
     );
   }
   if (!auth.account) return <AuthScreen auth={auth} />;
-  // Compte tout neuf : trois questions de confort avant d'entrer dans le menu.
-  if (display.onboarding) {
-    return <OnboardingScreen pseudo={auth.account.pseudo} onDone={() => setDisplay({ onboarding: false })} />;
+  // Trois questions de confort avant d'entrer dans le menu, une fois par
+  // navigateur : à l'inscription, et aussi à la première connexion des comptes
+  // qui existaient avant l'assistant.
+  if (!display.onboarded) {
+    return <OnboardingScreen pseudo={auth.account.pseudo} onDone={() => setDisplay({ onboarded: true })} />;
   }
 
   // Écrans plein écran (hors coquille).
