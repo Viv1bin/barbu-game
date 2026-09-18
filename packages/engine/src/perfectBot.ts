@@ -13,8 +13,8 @@
 // (nombre de cartes restantes) sont utilisées.
 import { fullDeck, shuffle, SUITS } from './cards.js';
 import { CONTRACTS } from './contracts.js';
-import { legalContracts } from './match.js';
-import { scoreReussite, scoreTrickContract } from './scoring.js';
+import { legalContractSets } from './match.js';
+import { scoreReussite, scoreTrickContracts } from './scoring.js';
 import { currentPlayer, initTrickRound, legalPlays, playCard } from './trickRound.js';
 import {
   canPass,
@@ -23,7 +23,7 @@ import {
   reussitePass,
   reussitePlay,
 } from './reussiteRound.js';
-import { penaltyLeftOutside, seenCards, smartReussite, smartTrick } from './bots.js';
+import { penaltyLeftOutside, seenCards, smartReussite, smartTrick, topReussiteRanks } from './bots.js';
 import type {
   Action,
   Card,
@@ -169,12 +169,12 @@ function playoutTrick(start: TrickRoundState): number[] {
     const p = currentPlayer(st);
     st = playCard(st, p, smartTrick(st, p, true));
   }
-  return scoreTrickContract(st.contract, { completedTricks: st.completedTricks, wonBy: st.wonBy });
+  return scoreTrickContracts(st.contracts, { completedTricks: st.completedTricks, wonBy: st.wonBy });
 }
 
 /** Simule une manche à plis complète depuis des mains données. */
-function simulateTrick(contract: ContractId, hands: Card[][], leader: PlayerId): number[] {
-  return playoutTrick(initTrickRound(contract, hands, leader));
+function simulateTrick(contracts: ContractId[], hands: Card[][], leader: PlayerId): number[] {
+  return playoutTrick(initTrickRound(contracts, hands, leader));
 }
 
 /** Termine une Réussite en cours avec la politique `smartReussite`, renvoie les points. */
@@ -194,10 +194,12 @@ function simulateReussite(rank: Rank, hands: Card[][], starter: PlayerId): numbe
   return playoutReussite(initReussiteRound(rank, hands, starter));
 }
 
-/** Points d'une manche (contrat quelconque) depuis des mains, hors contres. */
-function simulateRound(contract: ContractId, rank: Rank | null, hands: Card[][], dealer: PlayerId): number[] {
-  if (CONTRACTS[contract].kind === 'reussite') return simulateReussite(rank ?? 8, hands, dealer);
-  return simulateTrick(contract, hands, dealer);
+/** Points d'une manche (annonce quelconque) depuis des mains, hors contres. */
+function simulateRound(contracts: ContractId[], rank: Rank | null, hands: Card[][], dealer: PlayerId): number[] {
+  if (contracts.length === 1 && CONTRACTS[contracts[0]!].kind === 'reussite') {
+    return simulateReussite(rank ?? 8, hands, dealer);
+  }
+  return simulateTrick(contracts, hands, dealer);
 }
 
 // ---------------------------------------------------------------------------
@@ -209,7 +211,7 @@ export function mcTrickPlay(s: TrickRoundState, me: PlayerId, rng: () => number)
   if (plays.length <= 1) return plays[0]!;
 
   // Plus aucune pénalité dehors : gagner est inoffensif, on lâche la plus haute.
-  if (!penaltyLeftOutside(s.contract, seenCards(s), s.hands[me]!)) {
+  if (!penaltyLeftOutside(s.contracts, seenCards(s), s.hands[me]!)) {
     return maxBy(plays, (c) => c.rank);
   }
 
@@ -248,49 +250,53 @@ export function mcTrickPlay(s: TrickRoundState, me: PlayerId, rng: () => number)
 export function mcChooseContract(s: MatchState, rng: () => number): Action {
   const dealer = s.dealer;
   const hand = s.pendingHands![dealer]!;
-  const options = legalContracts(s);
+  const sets = legalContractSets(s);
   const opps = ALL_PLAYERS.filter((p) => p !== dealer);
 
-  const evalContract = (contract: ContractId, rank: Rank | null): number => {
+  // Budget constant : en manche combinée il y a jusqu'à 21 annonces possibles
+  // au lieu de 7, on ne peut pas garder 24 mondes par annonce sans faire
+  // attendre la table. Le nombre de simulations totales, lui, ne bouge pas.
+  const budget = IMPOSSIBLE.contractWorlds * 7;
+  const worldCount = Math.max(8, Math.round(budget / Math.max(1, sets.length)));
+
+  // MONDES COMMUNS : toutes les annonces sont jugées sur les mêmes donnes.
+  // Comparer des contrats sur des donnes différentes, c'est mesurer surtout le
+  // bruit du tirage ; à donne égale, l'écart mesuré est bien celui du contrat.
+  const worlds: Card[][][] = [];
+  for (let i = 0; i < worldCount; i++) worlds.push(sampleFreshWorld(hand, dealer, rng));
+
+  const evalSet = (contracts: ContractId[], rank: Rank | null): number => {
     let sum = 0;
-    for (let i = 0; i < IMPOSSIBLE.contractWorlds; i++) {
-      const hands = sampleFreshWorld(hand, dealer, rng);
-      const pts = simulateRound(contract, rank, hands, dealer);
+    for (const w of worlds) {
+      const pts = simulateRound(contracts, rank, w.map((h) => h.slice()), dealer);
       const oppAvg = opps.reduce<number>((a, o) => a + pts[o]!, 0) / opps.length;
       sum += pts[dealer]! - oppAvg; // avantage relatif : plus bas = mieux placé que les autres
     }
-    return sum / IMPOSSIBLE.contractWorlds;
+    return sum / worlds.length;
   };
 
-  let best: { contract: ContractId; rank: Rank | null } = { contract: options[0]!, rank: null };
+  let best: { contracts: ContractId[]; rank: Rank | null } = { contracts: sets[0]!, rank: null };
   let bestEV = Infinity;
-  for (const contract of options) {
-    if (contract === 'REUSSITE') {
-      // On teste chaque hauteur d'ouverture présente en main et on garde la meilleure.
-      const ranks = [...new Set(hand.map((c) => c.rank))] as Rank[];
-      for (const rank of ranks) {
-        const ev = evalContract(contract, rank);
-        if (ev < bestEV) {
-          bestEV = ev;
-          best = { contract, rank };
-        }
-      }
-    } else {
-      const ev = evalContract(contract, null);
+  for (const contracts of sets) {
+    // La Réussite se donne seule : on teste ses hauteurs les plus fluides.
+    const ranks: (Rank | null)[] =
+      contracts.length === 1 && contracts[0] === 'REUSSITE' ? topReussiteRanks(hand, 3) : [null];
+    for (const rank of ranks) {
+      const ev = evalSet(contracts, rank);
       if (ev < bestEV) {
         bestEV = ev;
-        best = { contract, rank: null };
+        best = { contracts, rank };
       }
     }
   }
   return best.rank === null
-    ? { t: 'CHOOSE_CONTRACT', contract: best.contract }
-    : { t: 'CHOOSE_CONTRACT', contract: best.contract, rank: best.rank };
+    ? { t: 'CHOOSE_CONTRACT', contracts: best.contracts }
+    : { t: 'CHOOSE_CONTRACT', contracts: best.contracts, rank: best.rank };
 }
 
 /** Contre : on contre si l'espérance de `E = mes points − points du donneur` est nettement négative. */
 export function mcContre(s: MatchState, me: PlayerId, rng: () => number): Action {
-  const contract = s.currentContract!;
+  const contracts = s.currentContracts;
   const rank = s.reussiteRank;
   const dealer = s.dealer;
   const myHand = s.pendingHands![me]!;
@@ -298,7 +304,7 @@ export function mcContre(s: MatchState, me: PlayerId, rng: () => number): Action
   let sumE = 0;
   for (let i = 0; i < IMPOSSIBLE.contreWorlds; i++) {
     const hands = sampleFreshWorld(myHand, me, rng);
-    const pts = simulateRound(contract, rank, hands, dealer);
+    const pts = simulateRound(contracts, rank, hands, dealer);
     sumE += pts[me]! - pts[dealer]!;
   }
   const avgE = sumE / IMPOSSIBLE.contreWorlds;

@@ -8,7 +8,7 @@ import { useLiveMatches } from './social/useSocial.js';
 export type Screen = 'menu' | 'solo' | 'online' | 'settings' | 'social' | 'rules';
 
 const MODES: { id: Screen; icon: IconName; title: string; desc: string; disabled?: boolean }[] = [
-  { id: 'solo', icon: 'bot', title: 'Solo', desc: 'Contre 3 bots. Partie complète, 28 manches.' },
+  { id: 'solo', icon: 'bot', title: 'Solo', desc: 'Contre 3 bots. Partie complète, courte ou éclair.' },
   { id: 'online', icon: 'globe', title: 'En ligne', desc: 'À 4 en temps réel. Code de partie, sièges bots ou amis.' },
 ];
 

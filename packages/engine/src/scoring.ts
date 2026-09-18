@@ -90,6 +90,17 @@ export function scoreReussite(finishOrder: PlayerId[]): number[] {
   return s;
 }
 
+/**
+ * Points d'une manche à plis : somme des barèmes annoncés. Une manche combinée
+ * se joue une seule fois mais compte deux fois — un pli peut coûter au titre
+ * des deux contrats à la fois.
+ */
+export function scoreTrickContracts(contracts: ContractId[], r: TrickResult): number[] {
+  const s = zero();
+  for (const c of contracts) scoreTrickContract(c, r).forEach((v, p) => (s[p]! += v));
+  return s;
+}
+
 /** Aiguillage par contrat pour les manches à plis. */
 export function scoreTrickContract(contract: ContractId, r: TrickResult): number[] {
   switch (contract) {

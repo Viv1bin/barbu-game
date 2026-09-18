@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { deal, fullDeck, shuffle } from './cards.js';
-import { currentPlayer, initTrickRound, legalPlays, playCard } from './trickRound.js';
+import { canUndoPlay, currentPlayer, initTrickRound, legalPlays, playCard, undoPlay } from './trickRound.js';
 import { randomBot } from './bots.js';
 import { scoreBarbu, scoreCoeur, type TrickResult } from './scoring.js';
 import type { Card, PlayerId } from './types.js';
@@ -23,14 +23,14 @@ describe('restriction cœur à l’entame', () => {
       [{ suit: 'H', rank: 5 }, { suit: 'S', rank: 9 }],
       [], [], [],
     ];
-    const s = initTrickRound('COEUR', hands, 0);
+    const s = initTrickRound(['COEUR'], hands, 0);
     const plays = legalPlays(s, 0);
     expect(plays.every((c) => c.suit !== 'H')).toBe(true);
   });
 
   it('autorise cœur si main 100% cœur', () => {
     const hands: Card[][] = [[{ suit: 'H', rank: 5 }, { suit: 'H', rank: 9 }], [], [], []];
-    const s = initTrickRound('COEUR', hands, 0);
+    const s = initTrickRound(['COEUR'], hands, 0);
     expect(legalPlays(s, 0).length).toBe(2);
   });
 });
@@ -42,7 +42,7 @@ describe('obligation de fournir la couleur', () => {
       [{ suit: 'S', rank: 9 }, { suit: 'C', rank: 2 }],
       [], [],
     ];
-    let s = initTrickRound('PLIS', hands, 0);
+    let s = initTrickRound(['PLIS'], hands, 0);
     s = playCard(s, 0, { suit: 'S', rank: 5 }); // entame pique
     const plays = legalPlays(s, 1);
     expect(plays).toEqual([{ suit: 'S', rank: 9 }]); // trèfle interdit
@@ -57,7 +57,7 @@ describe('Barbu — arrêt sur Roi de cœur', () => {
       [{ suit: 'H', rank: 13 }, { suit: 'C', rank: 4 }], // KH + trèfle, pas de pique
       [{ suit: 'S', rank: 2 }, { suit: 'C', rank: 5 }],
     ];
-    let s = initTrickRound('BARBU', hands, 0);
+    let s = initTrickRound(['BARBU'], hands, 0);
     s = playCard(s, 0, { suit: 'S', rank: 5 });
     s = playCard(s, 1, { suit: 'S', rank: 9 });
     s = playCard(s, 2, { suit: 'H', rank: 13 }); // défausse le KH
@@ -73,7 +73,7 @@ describe('Barbu — arrêt sur Roi de cœur', () => {
 describe('simulation complète (randomBot)', () => {
   it('un contrat non-Barbu joue 13 plis et vide les mains', () => {
     const r = rng(42);
-    let s = initTrickRound('COEUR', deal(shuffle(fullDeck(), r)), 0);
+    let s = initTrickRound(['COEUR'], deal(shuffle(fullDeck(), r)), 0);
     let guard = 0;
     while (!s.finished && guard++ < 100) {
       const p = currentPlayer(s);
@@ -85,5 +85,43 @@ describe('simulation complète (randomBot)', () => {
     const res: TrickResult = { completedTricks: s.completedTricks, wonBy: s.wonBy };
     const total = scoreCoeur(res).reduce((a, b) => a + b, 0);
     expect(total).toBe(130); // 13 cœurs * 10
+  });
+});
+
+describe('reprise de carte', () => {
+  const hands = (): Card[][] => [
+    [{ suit: 'S', rank: 9 }, { suit: 'D', rank: 4 }],
+    [{ suit: 'S', rank: 3 }, { suit: 'D', rank: 7 }],
+    [{ suit: 'S', rank: 5 }, { suit: 'C', rank: 2 }],
+    [{ suit: 'S', rank: 8 }, { suit: 'C', rank: 6 }],
+  ];
+
+  it('rend la carte à sa main tant que personne n’a joué dessus', () => {
+    let s = initTrickRound(['PLIS'], hands(), 0);
+    s = playCard(s, 0, { suit: 'S', rank: 9 });
+    expect(canUndoPlay(s, 0)).toBe(true);
+    s = undoPlay(s, 0);
+    expect(s.currentTrick).toHaveLength(0);
+    expect(s.hands[0]).toHaveLength(2);
+    expect(currentPlayer(s)).toBe(0);
+  });
+
+  it('refuse dès que le joueur suivant a posé', () => {
+    let s = initTrickRound(['PLIS'], hands(), 0);
+    s = playCard(s, 0, { suit: 'S', rank: 9 });
+    s = playCard(s, 1, { suit: 'S', rank: 3 });
+    expect(canUndoPlay(s, 0)).toBe(false);
+    expect(() => undoPlay(s, 0)).toThrow();
+    // Le dernier à avoir joué, lui, peut encore se reprendre.
+    expect(canUndoPlay(s, 1)).toBe(true);
+  });
+
+  it('oublie l’ouverture du cœur quand c’est la carte reprise qui l’avait ouverte', () => {
+    const h: Card[][] = [[{ suit: 'H', rank: 5 }], [{ suit: 'H', rank: 6 }], [], []];
+    let s = initTrickRound(['PLIS'], h, 0);
+    s = playCard(s, 0, { suit: 'H', rank: 5 });
+    expect(s.heartsBroken).toBe(true);
+    s = undoPlay(s, 0);
+    expect(s.heartsBroken).toBe(false);
   });
 });

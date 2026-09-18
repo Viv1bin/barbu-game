@@ -11,8 +11,8 @@ import {
   type MatchOptions,
 } from './options.js';
 import { botChooseContract, botContre, botReussite, botTrickPlay, type Difficulty } from './bots.js';
-import { scoreReussite, scoreTrickContract } from './scoring.js';
-import { currentPlayer, initTrickRound, playCard } from './trickRound.js';
+import { scoreReussite, scoreTrickContracts } from './scoring.js';
+import { currentPlayer, initTrickRound, playCard, undoPlay } from './trickRound.js';
 import { initReussiteRound, reussitePass, reussitePlay } from './reussiteRound.js';
 import type {
   Action,
@@ -28,12 +28,12 @@ import type {
 export const TOTAL_MANCHES = totalManches(DEFAULT_MATCH_OPTIONS);
 
 /** Distribue et ouvre la phase de choix du contrat pour le donneur courant. */
-function startManche(base: Omit<MatchState, 'pendingHands' | 'phase' | 'currentContract' | 'reussiteRank' | 'contres' | 'contreDecided' | 'round'>, rng: () => number): MatchState {
+function startManche(base: Omit<MatchState, 'pendingHands' | 'phase' | 'currentContracts' | 'reussiteRank' | 'contres' | 'contreDecided' | 'round'>, rng: () => number): MatchState {
   return {
     ...base,
     pendingHands: deal(shuffle(fullDeck(), rng)),
     phase: 'CHOOSE_CONTRACT',
-    currentContract: null,
+    currentContracts: [],
     reussiteRank: null,
     contres: [],
     contreDecided: [],
@@ -62,9 +62,24 @@ export function createMatch(rng: () => number = Math.random, options?: unknown):
  * serait `undefined` et tout le reste planterait à la première manche.
  */
 export function withMatchOptions(s: MatchState): MatchState {
-  return s.options && Array.isArray(s.options.contracts)
-    ? s
-    : { ...s, options: normalizeMatchOptions(s.options) };
+  // Sauvegardes d'avant les manches combinées : un contrat unique y était porté
+  // par `currentContract` / `round.contract`. On les replie sur les listes.
+  const legacy = s as unknown as { currentContract?: ContractId | null };
+  const currentContracts = Array.isArray(s.currentContracts)
+    ? s.currentContracts
+    : legacy.currentContract
+      ? [legacy.currentContract]
+      : [];
+  let round = s.round;
+  if (round && 'currentTrick' in round && !Array.isArray(round.contracts)) {
+    const old = round as unknown as { contract: ContractId };
+    round = { ...round, contracts: [old.contract] };
+  }
+  const options =
+    s.options && Array.isArray(s.options.contracts) && typeof s.options.perDealer === 'number'
+      ? s.options
+      : normalizeMatchOptions(s.options);
+  return { ...s, options, currentContracts, round };
 }
 
 /** Contrats que le donneur courant n'a pas encore donnés, parmi ceux en jeu. */
@@ -72,6 +87,22 @@ export function legalContracts(s: MatchState): ContractId[] {
   const done = s.playedContracts[s.dealer]!;
   const inPlay = s.options?.contracts ?? ALL_CONTRACTS;
   return ALL_CONTRACTS.filter((c) => inPlay.includes(c) && !done.includes(c));
+}
+
+/**
+ * Annonces possibles pour le donneur : toutes les combinaisons de
+ * `options.combine` contrats encore disponibles. À 1 contrat par manche, c'est
+ * simplement `legalContracts` emballé un par un.
+ */
+export function legalContractSets(s: MatchState): ContractId[][] {
+  const pool = legalContracts(s);
+  const k = s.options?.combine ?? 1;
+  if (k <= 1) return pool.map((c) => [c]);
+  const out: ContractId[][] = [];
+  for (let i = 0; i < pool.length; i++) {
+    for (let j = i + 1; j < pool.length; j++) out.push([pool[i]!, pool[j]!]);
+  }
+  return out;
 }
 
 /** Prochain joueur devant répondre au contre (ordre : donneur+1, +2, +3). */
@@ -85,29 +116,26 @@ export function nextContreResponder(s: MatchState): PlayerId | null {
 
 function initRound(s: MatchState): TrickRoundState | ReussiteState {
   const hands = s.pendingHands!;
-  const contract = s.currentContract!;
-  if (CONTRACTS[contract].kind === 'reussite') {
+  const contracts = s.currentContracts;
+  if (contracts.length === 1 && CONTRACTS[contracts[0]!].kind === 'reussite') {
     return initReussiteRound(s.reussiteRank!, hands, s.dealer);
   }
-  return initTrickRound(contract, hands, s.dealer);
+  return initTrickRound(contracts, hands, s.dealer);
 }
 
 /** Calcule les points de la manche (contrat + contres) et clôt la manche. */
 function scoreAndAdvance(s: MatchState, rng: () => number): MatchState {
   const round = s.round!;
-  const contract = s.currentContract!;
+  const contracts = s.currentContracts;
   const roundPoints =
-    CONTRACTS[contract].kind === 'reussite'
-      ? scoreReussite((round as ReussiteState).finishOrder)
-      : scoreTrickContract(contract, {
-          completedTricks: (round as TrickRoundState).completedTricks,
-          wonBy: (round as TrickRoundState).wonBy,
-        });
+    'currentTrick' in round
+      ? scoreTrickContracts(contracts, { completedTricks: round.completedTricks, wonBy: round.wonBy })
+      : scoreReussite(round.finishOrder);
 
   const withContres = applyContres(roundPoints, s.dealer, s.contres);
   const scores = s.scores.map((v, i) => v + withContres[i]!);
   const playedContracts = s.playedContracts.map((arr) => arr.slice());
-  playedContracts[s.dealer]!.push(contract);
+  playedContracts[s.dealer]!.push(...contracts);
   const mancheCount = s.mancheCount + 1;
 
   if (mancheCount >= totalManches(s.options)) {
@@ -127,13 +155,19 @@ export function applyMatchAction(s: MatchState, action: Action, rng: () => numbe
   switch (s.phase) {
     case 'CHOOSE_CONTRACT': {
       if (action.t !== 'CHOOSE_CONTRACT') throw new Error('Attendu : choix du contrat');
-      if (!legalContracts(s).includes(action.contract)) throw new Error('Contrat déjà donné ou invalide');
-      if (CONTRACTS[action.contract].kind === 'reussite' && action.rank == null) {
-        throw new Error('Réussite : hauteur (rank) requise');
+      const chosen = action.contracts ?? [];
+      const expected = s.options.combine ?? 1;
+      if (chosen.length !== expected) {
+        throw new Error(`Il faut annoncer ${expected} contrat(s), pas ${chosen.length}`);
       }
+      if (new Set(chosen).size !== chosen.length) throw new Error('Deux fois le même contrat');
+      const legal = legalContracts(s);
+      if (chosen.some((c) => !legal.includes(c))) throw new Error('Contrat déjà donné ou invalide');
+      const isReussite = chosen.length === 1 && CONTRACTS[chosen[0]!].kind === 'reussite';
+      if (isReussite && action.rank == null) throw new Error('Réussite : hauteur (rank) requise');
       const next: MatchState = {
         ...s,
-        currentContract: action.contract,
+        currentContracts: chosen,
         reussiteRank: action.rank ?? null,
         phase: 'CONTRE',
         contres: [],
@@ -160,6 +194,8 @@ export function applyMatchAction(s: MatchState, action: Action, rng: () => numbe
     case 'PLAY': {
       const round = s.round!;
       if ('currentTrick' in round) {
+        // Reprise de carte : ne fait jamais avancer la manche, donc pas de scoring.
+        if (action.t === 'UNDO_PLAY') return { ...s, round: undoPlay(round, action.player) };
         if (action.t !== 'PLAY_CARD') throw new Error('Attendu : PLAY_CARD');
         const nr = playCard(round, action.player, action.card);
         const s2: MatchState = { ...s, round: nr };

@@ -20,8 +20,9 @@ export function legalPlays(s: TrickRoundState, player: PlayerId): Card[] {
   const led = ledSuit(s);
 
   if (led === null) {
-    // Entame : restriction cœur pour les contrats concernés.
-    if (CONTRACTS[s.contract].heartRestricted) {
+    // Entame : restriction cœur pour les contrats concernés. En manche
+    // combinée, la restriction la plus stricte l'emporte.
+    if (s.contracts.some((c) => CONTRACTS[c].heartRestricted)) {
       const nonHearts = hand.filter((c) => !isHeart(c));
       if (nonHearts.length > 0) return nonHearts; // interdit d'entamer cœur
     }
@@ -37,9 +38,9 @@ export function isLegalPlay(s: TrickRoundState, player: PlayerId, card: Card): b
   return legalPlays(s, player).some((c) => cardEquals(c, card));
 }
 
-export function initTrickRound(contract: ContractId, hands: Card[][], firstLeader: PlayerId): TrickRoundState {
+export function initTrickRound(contracts: ContractId[], hands: Card[][], firstLeader: PlayerId): TrickRoundState {
   return {
-    contract,
+    contracts,
     hands: hands.map((h) => h.slice()),
     leader: firstLeader,
     currentTrick: [],
@@ -48,6 +49,31 @@ export function initTrickRound(contract: ContractId, hands: Card[][], firstLeade
     heartsBroken: false,
     finished: false,
   };
+}
+
+/**
+ * Peut-on reprendre sa carte ? Oui tant que personne n'a joué par-dessus : la
+ * carte est encore seule au-dessus du tas, la reprendre ne change rien à ce que
+ * les autres ont pu voir d'eux-mêmes. Une fois le joueur suivant engagé, il a
+ * décidé *en fonction* de cette carte — la reprendre réécrirait sa décision.
+ */
+export function canUndoPlay(s: TrickRoundState, player: PlayerId): boolean {
+  if (s.finished || s.currentTrick.length === 0) return false;
+  return s.currentTrick[s.currentTrick.length - 1]!.player === player;
+}
+
+/** Reprend la dernière carte posée par `player`. Lève si ce n'est plus possible. */
+export function undoPlay(s: TrickRoundState, player: PlayerId): TrickRoundState {
+  if (!canUndoPlay(s, player)) throw new Error('Trop tard : la carte est recouverte');
+  const last = s.currentTrick[s.currentTrick.length - 1]!;
+  const hands = s.hands.map((h) => h.slice());
+  hands[player] = [...hands[player]!, last.card];
+  const currentTrick = s.currentTrick.slice(0, -1);
+  // `heartsBroken` se redéduit du jeu visible : il ne doit pas rester vrai à
+  // cause d'une carte qu'on vient justement de retirer de la table.
+  const heartsBroken =
+    s.completedTricks.flat().some((pc) => isHeart(pc.card)) || currentTrick.some((pc) => isHeart(pc.card));
+  return { ...s, hands, currentTrick, heartsBroken };
 }
 
 /**
@@ -71,8 +97,12 @@ export function playCard(s: TrickRoundState, player: PlayerId, card: Card): Tric
   const completedTricks = [...s.completedTricks, currentTrick];
   const wonBy = [...s.wonBy, winner];
 
-  // Barbu : la manche s'arrête dès que le Roi de cœur est ramassé.
-  const kingTaken = CONTRACTS[s.contract].stopsOnKingOfHearts && currentTrick.some((pc) => isKingOfHearts(pc.card));
+  // Barbu : la manche s'arrête dès que le Roi de cœur est ramassé. Sauf en
+  // manche combinée — l'autre contrat, lui, se joue jusqu'à la dernière carte.
+  const kingTaken =
+    s.contracts.length === 1 &&
+    CONTRACTS[s.contracts[0]!].stopsOnKingOfHearts &&
+    currentTrick.some((pc) => isKingOfHearts(pc.card));
   const allPlayed = hands.every((h) => h.length === 0);
   const finished = kingTaken || allPlayed;
 

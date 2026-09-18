@@ -363,6 +363,11 @@ export class GameRoom {
    */
   private handleFillBot(sender: Conn, msg: Extract<ClientMsg, { t: 'FILL_BOT' }>) {
     if (!this.isOwner(sender)) return this.sendError(sender, 'Seul le créateur de la partie peut confier un siège à un bot.');
+    // Le remplacement se décide à la création de la salle : sans l'option, une
+    // absence suspend la partie, point.
+    if (this.started && !this.options.allowBots) {
+      return this.sendError(sender, 'Cette partie a été créée sans remplacement par des bots.');
+    }
     const seat = this.seats[msg.seat];
     if (!seat || seat.kind !== 'human') return;
     if (seat.connId) return this.sendError(sender, 'Ce joueur est connecté.');
@@ -399,7 +404,11 @@ export class GameRoom {
     if (this.halted()) return this.sendError(sender, 'Partie en pause.');
     const seat = this.seatOfConn(sender.id);
     if (seat === null) return this.sendError(sender, 'Vous n\'êtes pas assis à cette table.');
-    if (currentActor(this.match) !== seat) return this.sendError(sender, 'Ce n\'est pas votre tour.');
+    // Reprendre sa carte se fait justement quand ce n'est plus son tour : c'est
+    // le moteur qui dit si la carte est encore découverte.
+    if (action.t !== 'UNDO_PLAY' && currentActor(this.match) !== seat) {
+      return this.sendError(sender, 'Ce n\'est pas votre tour.');
+    }
     if ('player' in action && action.player !== seat) return this.sendError(sender, 'Action invalide.');
     try {
       await this.applyAction(action);
@@ -410,19 +419,28 @@ export class GameRoom {
 
   /** Un coup de bot à la fois ; se relance tant que c'est à un siège piloté. */
   private tick() {
-    void this.run(async () => {
-      if (!this.match || this.match.phase === 'DONE') return;
-      if (this.halted()) return; // pause de l'hôte ou joueur absent : rien ne bouge
-      const actor = currentActor(this.match);
-      if (actor === null) return;
-      const seat = this.seats[actor]!;
-      if (!this.botControlled(seat)) return; // au tour d'un humain : on attend
+    if (!this.match || this.match.phase === 'DONE') return;
+    if (this.halted()) return; // pause de l'hôte ou joueur absent : rien ne bouge
+    const actor = currentActor(this.match);
+    if (actor === null) return;
+    const seat = this.seats[actor]!;
+    if (!this.botControlled(seat)) return; // au tour d'un humain : on attend
+
+    // Le temps d'attente du bot est pris HORS de la chaîne : la garder pendant
+    // une seconde bloquerait tout ce qui arrive entre-temps, à commencer par le
+    // joueur qui veut reprendre la carte qu'il vient de poser.
+    void (async () => {
       await sleep(TIMING.botDelay);
-      if (!this.match || currentActor(this.match) !== actor) return void this.tick();
-      const action = autoAction(this.match, this.rng, seat.level);
-      await this.applyAction(action);
-      this.tick();
-    });
+      let acted = false;
+      await this.run(async () => {
+        if (!this.match || this.halted() || currentActor(this.match) !== actor) return;
+        acted = true;
+        await this.applyAction(autoAction(this.match, this.rng, seat.level));
+      });
+      // Sans coup joué (carte reprise, pause…), c'est l'action suivante qui
+      // relancera la boucle : se rappeler ici tournerait à vide.
+      if (acted) this.tick();
+    })();
   }
 
   /** Applique une action, journalise la manche, gère la pause d'un pli, diffuse. */
@@ -435,10 +453,10 @@ export class GameRoom {
       pause = { trick, winner: trickWinner(trick).player };
     }
     const next = applyMatchAction(m, action, this.rng);
-    if (next.mancheCount > m.mancheCount && m.currentContract) {
+    if (next.mancheCount > m.mancheCount && m.currentContracts.length > 0) {
       this.history.push({
         dealer: m.dealer,
-        contract: m.currentContract,
+        contracts: m.currentContracts,
         contres: m.contres,
         points: next.scores.map((sc, p) => sc - m.scores[p]!),
       });

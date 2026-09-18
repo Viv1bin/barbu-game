@@ -15,12 +15,16 @@
   --felt: #f3e9dd; /* tapis de table, beige */
 
   /* Bordures */
-  --border: #e8ded1;
-  --border-strong: #d6c7b5;
+  --border: #ded2c2;
+  --border-strong: #c6b39d;
 
-  /* Encre */
-  --text: #2f2a25;
-  --muted: #8b8076;
+  /* Facteur de taille des cartes, réglé par le joueur (voir settings/display.ts). */
+  --card-scale: 1;
+
+  /* Encre — le gris secondaire reste lisible sur le beige : au-delà, les
+     libellés d'état (« à vous », « contre ») passaient inaperçus en plein jour. */
+  --text: #2a2521;
+  --muted: #736860;
   /* Voiles d'encre : remplacent les surimpressions blanches du thème sombre. */
   --ink-3: rgba(47, 42, 37, 0.03);
   --ink-6: rgba(47, 42, 37, 0.06);
@@ -52,6 +56,46 @@
   /* Colonne de contenu : identique partout, d'où l'absence de décalage. */
   --content-w: 620px;
 }
+
+/* --- Style « contrasté » --------------------------------------------------
+   Même mise en page, plus de contraste : bordures franches, encre plus noire,
+   tapis plus détaché du fond, rouge et vert saturés. Pensé pour jouer dehors
+   ou sur un écran fatigué — pas pour remplacer le style sobre. */
+:root[data-theme='contraste'] {
+  --bg: #f7f1e8;
+  --surface: #ffffff;
+  --surface-2: #f0e6d8;
+  --surface-3: #e3d5c1;
+  --felt: #e4d3ba;
+
+  --border: #b9a68c;
+  --border-strong: #8d7a60;
+
+  --text: #191512;
+  --muted: #554c43;
+  --ink-6: rgba(25, 21, 18, 0.1);
+  --ink-10: rgba(25, 21, 18, 0.16);
+
+  --accent: #a8401d;
+  --accent-2: #c9603c;
+  --accent-soft: #f6dccf;
+  --success: #2f6b41;
+  --success-soft: #d9eade;
+  --danger: #98332a;
+  --danger-soft: #f6d9d4;
+  --card-red: #b4130c;
+
+  --shadow-1: 0 1px 2px rgba(25, 21, 18, 0.12);
+  --shadow-2: 0 4px 14px rgba(25, 21, 18, 0.16);
+}
+/* Les traits fins disparaissent les premiers : on les double dans ce style. */
+:root[data-theme='contraste'] .pcard,
+:root[data-theme='contraste'] .seat,
+:root[data-theme='contraste'] .poker-table,
+:root[data-theme='contraste'] .panel,
+:root[data-theme='contraste'] .modal { border-width: 2px; }
+:root[data-theme='contraste'] .pcard .pip { opacity: 1; }
+:root[data-theme='contraste'] .seat.active { box-shadow: 0 0 0 4px var(--accent-soft); }
 
 * { box-sizing: border-box; }
 
@@ -306,21 +350,41 @@ button.hinted { outline: 2px solid var(--accent); outline-offset: 2px; opacity: 
   background: repeating-linear-gradient(45deg, var(--surface-3) 0 6px, var(--surface-2) 6px 12px);
   border-color: var(--border-strong);
 }
-.pcard.sm { width: 34px; height: 48px; border-radius: 6px; }
-.pcard.sm .corner { font-size: .6rem; } .pcard.sm .pip { font-size: 1.1rem; }
+/* Les trois tailles suivent `--card-scale` : le joueur règle une fois, tout
+   le jeu suit (main, pli, réussite, aperçus). */
+.pcard.sm { width: calc(34px * var(--card-scale)); height: calc(48px * var(--card-scale)); border-radius: 6px; }
+.pcard.sm .corner { font-size: calc(.6rem * var(--card-scale)); }
+.pcard.sm .pip { font-size: calc(1.1rem * var(--card-scale)); }
 /* À cette taille le symbole du coin chevauche le rang : on le retire, la carte
    est vue en entier (réussite, tri, révélation) donc le symbole central suffit. */
 .pcard.sm .csuit { display: none; }
-.pcard.md { width: 58px; height: 82px; border-radius: 10px; }
-.pcard.md .corner { font-size: .82rem; } .pcard.md .pip { font-size: 2.1rem; }
-.pcard.lg { width: 70px; height: 98px; border-radius: 12px; }
-.pcard.lg .corner { font-size: .95rem; } .pcard.lg .pip { font-size: 2.6rem; }
+.pcard.md { width: calc(58px * var(--card-scale)); height: calc(82px * var(--card-scale)); border-radius: 10px; }
+.pcard.md .corner { font-size: calc(.82rem * var(--card-scale)); }
+.pcard.md .pip { font-size: calc(2.1rem * var(--card-scale)); }
+.pcard.lg { width: calc(70px * var(--card-scale)); height: calc(98px * var(--card-scale)); border-radius: 12px; }
+.pcard.lg .corner { font-size: calc(.95rem * var(--card-scale)); }
+.pcard.lg .pip { font-size: calc(2.6rem * var(--card-scale)); }
 
 /* --- Main du joueur ------------------------------------------------------- */
 footer { border-top: 1px solid var(--border); padding-top: 10px; }
 .dock { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 6px; }
-.handbar { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 6px; }
+/* À ton tour, la main grossit et remonte : elle mord sur ta propre plaque de
+   joueur, ce qui est le bon arbitrage — au moment de choisir une carte, la lire
+   compte plus que de voir son avatar et son score, affichés partout ailleurs. */
+.dock.myturn {
+  --turn-zoom: 1.18;
+  position: relative; z-index: 5; margin-top: -22px; border-top-color: var(--accent);
+}
+.dock.myturn .handlabel { color: var(--accent); font-weight: 650; }
+.handbar { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
 .handlabel { font-size: .82rem; color: var(--muted); }
+/* Reprendre sa carte : visible, mais jamais au point de se confondre avec un
+   coup à jouer — c'est un retour en arrière, pas une action de jeu. */
+.undo {
+  background: var(--surface); color: var(--accent); border-color: var(--accent);
+  font-size: .8rem; padding: 5px 11px;
+}
+.undo:hover { background: var(--accent-soft); color: var(--accent); }
 .hand { display: flex; justify-content: center; align-items: flex-end; min-height: 104px; padding-top: 22px; }
 /*
  * Éventail dimensionné par la largeur réellement disponible plutôt que par un
@@ -343,7 +407,7 @@ footer { border-top: 1px solid var(--border); padding-top: 10px; }
      JSX) : sans cette réserve en bas, l'arc sortait du conteneur. */
   --half: calc((var(--n, 13) - 1) / 2);
   padding-bottom: calc(var(--half) * var(--half) * 1.7px);
-  --cw: 62px;
+  --cw: calc(62px * var(--card-scale) * var(--turn-zoom, 1));
   --fanrot: 5deg;
   --fan-inset: 78px;
   --ov: clamp(
@@ -426,7 +490,22 @@ footer { border-top: 1px solid var(--border); padding-top: 10px; }
 .seat-top { top: -26px; left: 50%; transform: translateX(-50%); }
 .seat-left { left: -20px; top: 50%; transform: translateY(-50%); }
 .seat-right { right: -20px; top: 50%; transform: translateY(-50%); }
-.seat.active { border-color: var(--accent); }
+/* Tour de jeu : un simple changement de bordure passait inaperçu au milieu de
+   quatre plaques identiques. Anneau plein, fond teinté, et un battement lent
+   qui accroche l'œil sans faire clignoter la table. */
+.seat.active {
+  border-color: var(--accent); background: var(--accent-soft);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  animation: seat-pulse 1.8s ease-in-out infinite;
+}
+.seat.active .sname { color: var(--accent); }
+@keyframes seat-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px var(--accent-soft); }
+  50% { box-shadow: 0 0 0 6px var(--accent-soft); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .seat.active { animation: none; }
+}
 .seat.won { border-color: var(--success); }
 .seat.dealer .sname { color: var(--accent); }
 .sinfo { line-height: 1.2; text-align: left; }
@@ -481,13 +560,17 @@ footer { border-top: 1px solid var(--border); padding-top: 10px; }
   display: inline-flex; align-items: center; gap: 10px;
 }
 .aheight { font-size: .95rem; color: var(--muted); }
+.abig > span { display: inline-flex; align-items: center; gap: 10px; }
+.aplus { color: var(--muted); font-weight: 400; margin: 0 4px; }
 
 /* Réussite */
 .reussite .tricklabel { margin-bottom: 8px; }
 .rfiles { display: flex; gap: 14px; justify-content: center; margin: 8px 0; }
 .rfile { display: flex; flex-direction: column; align-items: center; }
-.rfan { position: relative; display: flex; }
-.rfan .pcard.stacked { margin-left: -20px; margin-top: -8px; }
+/* Les deux bornes d'une file, espacées : ce sont elles qui disent ce qu'on peut
+   poser. Superposées, on ne lisait ni l'une ni l'autre. */
+.rfan { position: relative; display: flex; align-items: center; gap: 4px; }
+.rspan { font-size: .62rem; color: var(--muted); font-weight: 650; }
 .rempty {
   width: 34px; height: 48px; border-radius: 5px; border: 1px dashed var(--border-strong);
   display: flex; align-items: center; justify-content: center; font-size: 1.2rem; color: var(--muted);
@@ -516,6 +599,36 @@ footer { border-top: 1px solid var(--border); padding-top: 10px; }
 .cb-chip:not(:disabled):hover { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
 .cb-ic { color: var(--accent); display: inline-flex; }
 .cb-height { min-width: 44px; font-weight: 700; }
+/* Manche combinée : la sélection s'empile avant d'être validée — annoncer une
+   paire par erreur est irréversible. */
+.cb-chip.picked { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.cb-confirm { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center; }
+
+/* Ce qu'il reste à donner au donneur, pendant qu'il choisit. */
+.dealerhand {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  font-size: .8rem; color: var(--muted);
+}
+.dh-label { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; }
+.dh-chips { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; }
+.dh-done { font-size: .72rem; }
+
+/* Phase de contre : l'état de chacun, pas seulement celui qui parle. */
+.contre-status { display: flex; flex-direction: column; gap: 4px; width: 100%; max-width: 320px; }
+.cs-row {
+  display: flex; align-items: center; gap: 8px; font-size: .82rem;
+  padding: 4px 8px; border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--surface);
+}
+.cs-row b { flex: 1; text-align: left; font-weight: 600; }
+.cs-row.turn { border-color: var(--accent); background: var(--accent-soft); }
+.cs-row.yes { border-color: var(--accent); }
+.cs-row.wait { opacity: .7; }
+.cs-tag { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; display: inline-flex; align-items: center; gap: 4px; }
+.cs-tag.yes { color: var(--accent); }
+.cs-tag.no { color: var(--success); }
+.cs-tag.turn { color: var(--accent); }
+.cs-tag.wait { color: var(--muted); }
 
 /* --- Fin de partie -------------------------------------------------------- */
 .done { text-align: center; }
@@ -623,6 +736,16 @@ footer { border-top: 1px solid var(--border); padding-top: 10px; }
 
 /* --- Tableaux ------------------------------------------------------------- */
 .tablewrap { overflow-x: auto; }
+/* Le tableau des scores défile sur 28 lignes : la ligne des noms reste collée
+   en haut, sinon on ne sait plus quelle colonne on est en train de lire.
+   `separate` est nécessaire — en `collapse`, les bordures d'un `th` collant ne
+   suivent pas l'en-tête. */
+.scores-modal .tablewrap { overflow: auto; max-height: 62vh; }
+.scores-modal .stable { border-collapse: separate; border-spacing: 0; }
+.scores-modal .stable thead th {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--surface); box-shadow: inset 0 -1px 0 var(--border-strong);
+}
 .stable { width: 100%; border-collapse: collapse; font-size: .8rem; }
 .stable th {
   color: var(--muted); font-weight: 500; font-size: .7rem; text-align: left;
@@ -643,6 +766,19 @@ footer { border-top: 1px solid var(--border); padding-top: 10px; }
 .pts.zero { color: var(--muted); }
 .cum { color: var(--muted); font-size: .68rem; margin-left: 4px; }
 .ctrtag { background: var(--accent); color: var(--accent-ink); border-radius: var(--r-sm); font-size: .58rem; padding: 0 4px; margin-left: 4px; }
+/* Le donneur par son pseudo : par défaut tout le monde a le même avatar, la
+   colonne ne disait rien. */
+.dealercell { display: flex; align-items: center; gap: 6px; }
+.dealercell span { font-weight: 600; }
+.ccell { display: inline-flex; align-items: center; gap: 5px; }
+.cplus { color: var(--muted); margin: 0 3px; }
+/* Le contre marqué dans la colonne de celui qui l'a posé : « ×2 » à côté du
+   contrat disait combien, jamais qui. */
+.ctrmark {
+  display: block; margin-bottom: 2px;
+  font-size: .6rem; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
+  color: var(--accent);
+}
 
 .contracts-overview { border-top: 1px solid var(--border); padding-top: 12px; }
 .contracts-overview h3 { margin: 0 0 10px; font-size: .92rem; color: var(--muted); font-weight: 600; }
@@ -656,6 +792,7 @@ footer { border-top: 1px solid var(--border); padding-top: 10px; }
   font-size: .7rem; background: var(--surface); border: 1px solid var(--border);
   padding: 1px 5px; border-radius: var(--r-sm); color: var(--muted);
 }
+.cov-note { margin: -4px 0 10px; }
 .cabbr.now { border-color: var(--accent); color: var(--accent); font-weight: 650; }
 .cabbr.done { color: var(--success); border-color: transparent; background: transparent; }
 
@@ -975,3 +1112,27 @@ footer { border-top: 1px solid var(--border); padding-top: 10px; }
   .topbar > button:first-child { position: static; }
   .topbar { justify-content: flex-start; }
 }
+
+/* --- Première configuration (après inscription) ---------------------------
+   Trois questions de confort avant d'entrer dans le menu. L'aperçu est présent
+   à chaque étape : c'est lui qui rend les réglages comparables. */
+.onboarding { justify-content: center; max-width: var(--content-w); }
+.ob-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+  padding: 24px; display: flex; flex-direction: column; gap: 18px;
+}
+.ob-head { text-align: center; }
+.ob-head h1 { margin: 6px 0 4px; font-size: 1.6rem; letter-spacing: -.02em; }
+.ob-step {
+  font-size: .7rem; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--accent); font-weight: 700;
+}
+.ob-body { display: flex; flex-direction: column; gap: 12px; align-items: center; text-align: center; }
+.ob-body h2 { margin: 0; font-size: 1.1rem; }
+.ob-body > .tabs, .ob-body > .optcards { width: 100%; }
+.ob-preview {
+  display: flex; gap: 4px; align-items: flex-end; flex-wrap: wrap; justify-content: center;
+  background: var(--felt); border: 1px solid var(--border-strong); border-radius: var(--r-md);
+  padding: 14px; width: 100%; min-height: 110px;
+}
+.ob-actions { display: flex; justify-content: space-between; gap: 10px; }

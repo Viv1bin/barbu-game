@@ -5,7 +5,7 @@ import { currentPlayer } from './trickRound.js';
 import {
   applyMatchAction,
   createMatch,
-  legalContracts,
+  legalContractSets,
   nextContreResponder,
 } from './match.js';
 import type { MatchState, ReussiteState, TrickRoundState } from './types.js';
@@ -28,9 +28,9 @@ function playFullMatch(seed: number): MatchState {
   let guard = 0;
   while (s.phase !== 'DONE' && guard++ < 20000) {
     if (s.phase === 'CHOOSE_CONTRACT') {
-      const c = legalContracts(s)[0]!;
-      const rank = CONTRACTS[c].kind === 'reussite' ? 7 : undefined;
-      s = applyMatchAction(s, { t: 'CHOOSE_CONTRACT', contract: c, rank }, r);
+      const set = legalContractSets(s)[0]!;
+      const rank = set.length === 1 && CONTRACTS[set[0]!].kind === 'reussite' ? 7 : undefined;
+      s = applyMatchAction(s, { t: 'CHOOSE_CONTRACT', contracts: set, rank }, r);
     } else if (s.phase === 'CONTRE') {
       const p = nextContreResponder(s)!;
       s = applyMatchAction(s, { t: 'CONTRE', player: p, contre: r() < 0.25 }, r);

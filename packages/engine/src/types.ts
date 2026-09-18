@@ -30,7 +30,8 @@ export interface PlayedCard {
 
 /** État d'une manche à plis (tous contrats sauf Réussite). */
 export interface TrickRoundState {
-  contract: ContractId;
+  /** Contrats joués simultanément sur cette donne (un seul, sauf partie éclair). */
+  contracts: ContractId[];
   hands: Card[][]; // hands[playerId]
   leader: PlayerId; // qui entame le pli courant
   currentTrick: PlayedCard[];
@@ -75,7 +76,8 @@ export interface MatchState {
   /** playedContracts[playerId] = contrats déjà donnés par ce joueur. */
   playedContracts: ContractId[][];
   phase: MatchPhase;
-  currentContract: ContractId | null; // contrat de la manche en cours
+  /** Contrats de la manche en cours (vide tant que le donneur n'a pas annoncé). */
+  currentContracts: ContractId[];
   reussiteRank: Rank | null; // hauteur choisie si contrat = REUSSITE
   pendingHands: Card[][] | null; // mains distribuées avant le début du jeu
   contres: PlayerId[]; // joueurs ayant contré le donneur pour la manche courante
@@ -86,8 +88,10 @@ export interface MatchState {
 }
 
 export type Action =
-  | { t: 'CHOOSE_CONTRACT'; contract: ContractId; rank?: Rank }
+  | { t: 'CHOOSE_CONTRACT'; contracts: ContractId[]; rank?: Rank }
   | { t: 'CONTRE'; player: PlayerId; contre: boolean }
   | { t: 'PLAY_CARD'; player: PlayerId; card: Card }
+  /** Reprend sa carte tant que le joueur suivant n'a pas joué par-dessus. */
+  | { t: 'UNDO_PLAY'; player: PlayerId }
   | { t: 'REUSSITE_PLAY'; player: PlayerId; card: Card }
   | { t: 'REUSSITE_PASS'; player: PlayerId };

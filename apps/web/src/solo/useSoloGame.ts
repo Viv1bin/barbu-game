@@ -59,7 +59,8 @@ export interface TrickPause {
 /** Une manche terminée, pour le tableau des scores. */
 export interface SoloManche {
   dealer: PlayerId;
-  contract: ContractId;
+  /** Contrats annoncés pour cette manche (un seul, sauf partie éclair). */
+  contracts: ContractId[];
   contres: PlayerId[];
   /** Points marqués par chaque joueur sur cette manche (contres appliqués). */
   points: number[];
@@ -107,9 +108,12 @@ export interface SoloGame {
   lastDeal: Card[][] | null;
   /** true si l'humain ne peut pas agir (bot en cours ou pause). */
   busy: boolean;
-  chooseContract: (contract: ContractId, rank?: Rank) => void;
+  /** Annonce du donneur : un contrat, ou deux en partie éclair. */
+  chooseContract: (contracts: ContractId[], rank?: Rank) => void;
   respondContre: (contre: boolean) => void;
   playCard: (card: Card) => void;
+  /** Reprend sa carte tant que le bot suivant n'a pas joué par-dessus. */
+  undoPlay: () => void;
   reussitePlay: (card: Card) => void;
   reussitePass: () => void;
   newGame: () => void;
@@ -168,10 +172,10 @@ export function useSoloGame(level: Difficulty, aid = false, opts: SoloOptions = 
     }
     const next = applyMatchAction(state, action, rngRef.current);
     // Manche bouclée : journaliser le contrat, les contres et le delta de score.
-    if (next.mancheCount > state.mancheCount && state.currentContract) {
+    if (next.mancheCount > state.mancheCount && state.currentContracts.length > 0) {
       const entry: SoloManche = {
         dealer: state.dealer,
-        contract: state.currentContract,
+        contracts: state.currentContracts,
         contres: state.contres,
         points: next.scores.map((sc, p) => sc - state.scores[p]!),
       };
@@ -216,9 +220,10 @@ export function useSoloGame(level: Difficulty, aid = false, opts: SoloOptions = 
     lastTrick,
     lastDeal: dealRef.current,
     busy,
-    chooseContract: (contract, rank) => step({ t: 'CHOOSE_CONTRACT', contract, rank }),
+    chooseContract: (contracts, rank) => step({ t: 'CHOOSE_CONTRACT', contracts, rank }),
     respondContre: (contre) => step({ t: 'CONTRE', player: HUMAN, contre }),
     playCard: (card) => step({ t: 'PLAY_CARD', player: HUMAN, card }),
+    undoPlay: () => step({ t: 'UNDO_PLAY', player: HUMAN }),
     reussitePlay: (card) => step({ t: 'REUSSITE_PLAY', player: HUMAN, card }),
     reussitePass: () => step({ t: 'REUSSITE_PASS', player: HUMAN }),
     newGame: () => {

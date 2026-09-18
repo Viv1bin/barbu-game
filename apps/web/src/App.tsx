@@ -5,6 +5,8 @@ import { RulesScreen } from './RulesScreen.js';
 import { SoloScreen } from './solo/SoloScreen.js';
 import { OnlineScreen } from './online/OnlineScreen.js';
 import { SettingsScreen } from './settings/SettingsScreen.js';
+import { OnboardingScreen } from './settings/OnboardingScreen.js';
+import { useDisplay } from './settings/display.js';
 import { SocialScreen } from './social/SocialScreen.js';
 import { AuthScreen } from './auth/AuthScreen.js';
 import { useAuth } from './auth/useAuth.js';
@@ -25,6 +27,9 @@ const SCREEN_TO_TAB: Partial<Record<Screen, Tab>> = {
 
 export function App() {
   const auth = useAuth();
+  // Monté ici pour que le thème et la taille des cartes soient appliqués au
+  // document dès le lancement, avant le premier écran.
+  const [display, setDisplay] = useDisplay();
   const [screen, setScreen] = useState<Screen>('menu');
   // Id de partie solo à reprendre directement (déclenché depuis les réglages).
   const [soloResume, setSoloResume] = useState<string | null>(null);
@@ -49,6 +54,10 @@ export function App() {
     );
   }
   if (!auth.account) return <AuthScreen auth={auth} />;
+  // Compte tout neuf : trois questions de confort avant d'entrer dans le menu.
+  if (display.onboarding) {
+    return <OnboardingScreen pseudo={auth.account.pseudo} onDone={() => setDisplay({ onboarding: false })} />;
+  }
 
   // Écrans plein écran (hors coquille).
   if (screen === 'solo') {
