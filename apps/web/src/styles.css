@@ -565,12 +565,17 @@ footer { border-top: 1px solid var(--border); padding-top: 10px; }
 
 /* Réussite */
 .reussite .tricklabel { margin-bottom: 8px; }
-.rfiles { display: flex; gap: 14px; justify-content: center; margin: 8px 0; }
+.rfiles { display: flex; gap: 18px; justify-content: center; align-items: flex-start; margin: 8px 0; }
 .rfile { display: flex; flex-direction: column; align-items: center; }
-/* Les deux bornes d'une file, espacées : ce sont elles qui disent ce qu'on peut
-   poser. Superposées, on ne lisait ni l'une ni l'autre. */
-.rfan { position: relative; display: flex; align-items: center; gap: 4px; }
-.rspan { font-size: .62rem; color: var(--muted); font-weight: 650; }
+/* Une file se lit comme elle se joue : elle monte et elle descend. Borne haute
+   en haut, borne basse en bas, et entre les deux ce qu'elles recouvrent. En
+   colonne, les quatre couleurs tiennent côte à côte sans déborder sur les
+   plaques des joueurs. */
+.rfan { position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.rspan {
+  font-size: .62rem; color: var(--muted); font-weight: 650; line-height: 1;
+  padding: 1px 6px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border);
+}
 .rempty {
   width: 34px; height: 48px; border-radius: 5px; border: 1px dashed var(--border-strong);
   display: flex; align-items: center; justify-content: center; font-size: 1.2rem; color: var(--muted);

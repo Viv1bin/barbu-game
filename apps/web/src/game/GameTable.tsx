@@ -135,7 +135,6 @@ export interface TableView {
   onShowProfile?: (profileId: string) => void;
 }
 
-const SUIT_ORDER: Suit[] = ['S', 'H', 'C', 'D'];
 // Positions visuelles : 0 = bas (moi), 1 = gauche, 2 = haut, 3 = droite.
 const SEAT_CLASS = ['seat-bottom', 'seat-left', 'seat-top', 'seat-right'];
 const CARD_TO: Record<number, [string, string]> = { 0: ['0', '44px'], 1: ['-60px', '0'], 2: ['0', '-44px'], 3: ['60px', '0'] };
@@ -871,26 +870,31 @@ function TrickCards({ trick, winner, collecting, you }: { trick: PlayedCard[]; w
   );
 }
 
-/** Réussite : chaque couleur montre ses cartes limites (bas → haut) avec un peu de volume. */
+/** Réussite : une colonne par couleur, borne haute au-dessus de la borne basse. */
 function ReussiteView({ round, seats }: { round: ReussiteState; seats: SeatLabel[] }) {
+  // Même ordre de couleurs que dans sa main : on cherche sa file au même
+  // endroit des deux côtés de l'écran.
+  const [sortPref] = useCardSort();
   return (
     <div className="reussite">
       <div className="tricklabel">Réussite — hauteur {rankLabel(round.rank)} · tour : {seats[round.turn]!.name}</div>
       <div className="rfiles">
-        {SUIT_ORDER.map((s) => {
+        {sortPref.suitOrder.map((s) => {
           const fan = round.files[s];
           return (
             <div key={s} className={`rfile ${SUIT_RED[s] ? 'red' : 'black'}`}>
               {fan ? (
-                // Les deux bornes côte à côte et espacées : ce sont elles qui
-                // disent ce qu'on peut poser, les superposer les rendait
-                // illisibles. Au singleton, une seule carte s'affiche.
+                // Une file s'étend vers le haut et vers le bas : on la dessine
+                // comme ça, borne haute au-dessus de la borne basse, avec au
+                // milieu le nombre de cartes couvertes. Empilées plutôt que
+                // côte à côte, les quatre couleurs tiennent dans la largeur de
+                // la table et restent lisibles de gauche à droite.
                 <div className="rfan">
-                  <PlayingCard card={{ suit: s, rank: fan.low }} size="md" />
+                  <PlayingCard card={{ suit: s, rank: fan.high }} size="md" />
                   {fan.high !== fan.low && (
                     <>
-                      <span className="rspan">{fan.high - fan.low > 1 ? `+${fan.high - fan.low - 1}` : ''}</span>
-                      <PlayingCard card={{ suit: s, rank: fan.high }} size="md" />
+                      {fan.high - fan.low > 1 && <span className="rspan">+{fan.high - fan.low - 1}</span>}
+                      <PlayingCard card={{ suit: s, rank: fan.low }} size="md" />
                     </>
                   )}
                 </div>
