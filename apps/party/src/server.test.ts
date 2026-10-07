@@ -390,4 +390,42 @@ describe('serveur en ligne', () => {
     const view = conn.sent.findLast((m) => m.t === 'VIEW');
     expect(view?.t).toBe('VIEW'); // et pas un LOBBY de configuration
   });
+
+  it('un instantané d’avant les formats de partie est migré à la restauration', async () => {
+    const { room, server, host } = await startedRoom();
+    server.onMessage(msg({ t: 'ACTION', action: { t: 'CHOOSE_CONTRACT', contracts: ['BARBU'] } }), host);
+    await flush();
+
+    // On rétrograde l'instantané dans sa forme d'avant `perDealer`/`combine` et
+    // les contrats au pluriel : exactement ce qu'une salle mise en pause avant
+    // le déploiement garde en stockage.
+    const legacy = JSON.parse(JSON.stringify(room.saved)) as Record<string, any>;
+    delete legacy.options.perDealer;
+    delete legacy.options.combine;
+    delete legacy.options.allowBots;
+    legacy.match.currentContract = legacy.match.currentContracts[0];
+    delete legacy.match.currentContracts;
+    if (legacy.match.round) {
+      legacy.match.round.contract = legacy.match.round.contracts[0];
+      delete legacy.match.round.contracts;
+    }
+    legacy.history = [{ dealer: 0, contract: 'COEUR', contres: [], scores: [0, 0, 0, 0] }];
+
+    const revived = new FakeRoom();
+    revived.saved = legacy as unknown as RoomSnapshot;
+    const server2 = new GameRoom(revived);
+    const conn = new FakeConn('h4');
+    revived.conns.push(conn);
+    server2.onConnect(conn);
+    server2.onMessage(msg({ t: 'JOIN', token: 'tok-host' }), conn);
+    await flush();
+
+    expect(server2.options.perDealer).toBe(7);
+    expect(server2.options.combine).toBe(1);
+    expect(server2.match?.currentContracts).toEqual(['BARBU']);
+    expect(server2.history[0]!.contracts).toEqual(['COEUR']);
+    const view = conn.sent.findLast((m) => m.t === 'VIEW');
+    expect(view?.t).toBe('VIEW');
+    if (view?.t === 'VIEW') expect(view.view.options.combine).toBe(1);
+  });
 });

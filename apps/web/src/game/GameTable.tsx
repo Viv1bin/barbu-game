@@ -8,6 +8,7 @@ import {
   legalPlays,
   legalReussitePlays,
   totalManches,
+  normalizeMatchOptions,
   type Action,
   type Card,
   type ContractId,
@@ -188,7 +189,8 @@ export function GameTable({
   const [leaving, setLeaving] = useState(false);
   const choosing = state.phase === 'CHOOSE_CONTRACT' && state.dealer === view.you && !view.pause;
   const done = state.phase === 'DONE';
-  const manches = totalManches(state.options);
+  // `options` peut manquer sur un état servi par une version antérieure.
+  const manches = totalManches(normalizeMatchOptions(state.options));
   const recap = useMancheRecap(view);
 
   return (
@@ -920,7 +922,7 @@ function ContractBar({ view }: { view: TableView }) {
   // Annonce en attente de complément (manche combinée : il en faut deux).
   const [picked, setPicked] = useState<ContractId[]>([]);
   const options = legalContracts(state);
-  const need = state.options.combine ?? 1;
+  const need = state.options?.combine ?? 1;
   const handRanks = [...new Set((state.pendingHands?.[you] ?? []).map((c) => c.rank))].sort((a, b) => b - a);
   const tip = hint?.t === 'CHOOSE_CONTRACT' ? hint : null;
   const hinted = (c: ContractId) => tip?.contracts.includes(c) ?? false;
