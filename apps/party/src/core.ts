@@ -4,6 +4,7 @@ import {
   createMatch,
   normalizeMatchOptions,
   totalManches,
+  withMatchOptions,
   DEFAULT_MATCH_OPTIONS,
   type MatchOptions,
   currentActor,
@@ -22,6 +23,13 @@ import {
   type ServerMsg,
   type TrickPause,
 } from '@barbu/engine';
+
+/** Manche d'historique écrite avant les manches combinées : `contract` au singulier. */
+function migrateLog(m: MancheLog): MancheLog {
+  if (Array.isArray(m.contracts)) return m;
+  const legacy = m as unknown as { contract?: MancheLog['contracts'][number] };
+  return { ...m, contracts: legacy.contract ? [legacy.contract] : [] };
+}
 
 /** Délais d'animation (mutables : les tests les mettent à 0 pour accélérer). */
 // `botDelay` n'est pas un temps de calcul : c'est le temps qu'il faut aux
@@ -166,9 +174,14 @@ export class GameRoom {
     this.hostId = snap.hostId;
     this.started = snap.started;
     this.paused = snap.paused;
-    this.options = snap.options;
-    this.match = snap.match;
-    this.history = snap.history;
+    // Un instantané survit aux déploiements : il peut avoir été écrit par une
+    // version qui ne connaissait ni `perDealer`/`combine`, ni les contrats au
+    // pluriel. On le fait passer par les migrations avant de s'en servir —
+    // sinon la partie reprise sert un état que le moteur et l'écran de jeu ne
+    // savent plus lire.
+    this.options = normalizeMatchOptions(snap.options);
+    this.match = snap.match ? withMatchOptions(snap.match) : null;
+    this.history = snap.history.map(migrateLog);
     this.matchId = snap.matchId;
     this.asks = [];
   }
